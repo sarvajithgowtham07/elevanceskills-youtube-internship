@@ -75,19 +75,20 @@ const VideoInfo = ({ video }: any) => {
     }
   };
   const handleWatchLater = async () => {
-    try {
-      const res = await axiosInstance.post(`/watch/${video._id}`, {
-        userId: user?._id,
-      });
-      if (res.data.watchlater) {
-        setIsWatchLater(!isWatchLater);
-      } else {
-        setIsWatchLater(false);
-      }
-    } catch (error) {
-      console.log(error);
+  if (!user) return;
+  try {
+    const res = await axiosInstance.post(`/watch/${video._id}`, {
+      userId: user?._id,
+    });
+    if (res.data.watchlater) {
+      setIsWatchLater(!isWatchLater);
+    } else {
+      setIsWatchLater(false);
     }
-  };
+  } catch (error) {
+    console.log(error);
+  }
+};
   const handleDislike = async () => {
     if (!user) return;
     try {
