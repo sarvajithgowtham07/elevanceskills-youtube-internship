@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
+import VideoDuration from "./VideoDuration";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const SearchResult = ({ query }: any) => {
@@ -116,9 +117,7 @@ const SearchResult = ({ query }: any) => {
                     className="object-cover group-hover:scale-105 transition-transform duration-200"
                   />
 
-                  <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-1 rounded">
-                    10:24
-                  </div>
+                  <VideoDuration filepath={video.filepath} />
                 </div>
               </Link>
 
