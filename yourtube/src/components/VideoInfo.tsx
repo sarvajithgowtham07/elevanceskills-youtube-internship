@@ -22,12 +22,6 @@ const VideoInfo = ({ video }: any) => {
   const { user } = useUser();
   const [isWatchLater, setIsWatchLater] = useState(false);
 
-  // const user: any = {
-  //   id: "1",
-  //   name: "John Doe",
-  //   email: "john@example.com",
-  //   image: "https://github.com/shadcn.png?height=32&width=32",
-  // };
   useEffect(() => {
     setlikes(video.Like || 0);
     setDislikes(video.Dislike || 0);
@@ -51,6 +45,7 @@ const VideoInfo = ({ video }: any) => {
     };
     handleviews();
   }, [user]);
+
   const handleLike = async () => {
     if (!user) return;
     try {
@@ -74,21 +69,23 @@ const VideoInfo = ({ video }: any) => {
       console.log(error);
     }
   };
+
   const handleWatchLater = async () => {
-  if (!user) return;
-  try {
-    const res = await axiosInstance.post(`/watch/${video._id}`, {
-      userId: user?._id,
-    });
-    if (res.data.watchlater) {
-      setIsWatchLater(!isWatchLater);
-    } else {
-      setIsWatchLater(false);
+    if (!user) return;
+    try {
+      const res = await axiosInstance.post(`/watch/${video._id}`, {
+        userId: user?._id,
+      });
+      if (res.data.watchlater) {
+        setIsWatchLater(!isWatchLater);
+      } else {
+        setIsWatchLater(false);
+      }
+    } catch (error) {
+      console.log(error);
     }
-  } catch (error) {
-    console.log(error);
-  }
-};
+  };
+
   const handleDislike = async () => {
     if (!user) return;
     try {
@@ -112,6 +109,50 @@ const VideoInfo = ({ video }: any) => {
       console.log(error);
     }
   };
+
+  const handleDownload = async () => {
+    if (!user) {
+      alert("Please sign in to download videos.");
+      return;
+    }
+
+    try {
+      const response = await axiosInstance.get(
+        `/video/download/${video._id}`,
+        { responseType: "blob" }
+      );
+
+      const blobUrl = window.URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download =
+        video.filename || `${video.videotitle || "video"}.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error: any) {
+      let serverMessage = "";
+      const data = error?.response?.data;
+
+      if (data instanceof Blob) {
+        try {
+          serverMessage = JSON.parse(await data.text())?.message || "";
+        } catch {
+          serverMessage = "";
+        }
+      } else {
+        serverMessage = data?.message || "";
+      }
+
+      if (error?.response?.status === 403) {
+        alert(serverMessage || "Upgrade your subscription to download videos.");
+      } else {
+        alert(serverMessage || "Unable to download this video. Please try again.");
+      }
+    }
+  };
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">{video.videotitle}</h1>
@@ -180,6 +221,7 @@ const VideoInfo = ({ video }: any) => {
             variant="ghost"
             size="sm"
             className="bg-gray-100 rounded-full"
+            onClick={handleDownload}
           >
             <Download className="w-5 h-5 mr-2" />
             Download
