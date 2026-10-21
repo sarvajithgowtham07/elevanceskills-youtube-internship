@@ -7,6 +7,12 @@ const userschema = mongoose.Schema({
   channelImage: { type: String, default: "" },
   description: { type: String },
   image: { type: String },
+    location: {
+    type: String,
+    trim: true,
+    maxlength: 100,
+    default: "",
+  },
   themePreference: {
     type: String,
     enum: ["light", "dark"],

@@ -1,4 +1,3 @@
-
 import users from "../Modals/Auth.js";
 import comment from "../Modals/comment.js";
 import mongoose from "mongoose";
@@ -665,6 +664,13 @@ export const deletecomment = async (req, res) => {
 
     await existingComment.save();
 
+    await commentModeration.create({
+      commentid: existingComment._id,
+      action: "DELETED",
+      performedBy: userid,
+      details: "Comment deleted by its owner",
+    });
+
     return res.status(200).json({
       comment: true,
       result: existingComment,
@@ -678,9 +684,10 @@ export const deletecomment = async (req, res) => {
   }
 };
 
+
 export const editcomment = async (req, res) => {
   const { id } = req.params;
-  const { commentbody } = req.body;
+  const { commentbody, expectedVersion } = req.body;
   const userid = req.user.id;
 
   if (
@@ -695,6 +702,16 @@ export const editcomment = async (req, res) => {
   if (!commentbody || !commentbody.trim()) {
     return res.status(400).json({
       message: "Comment cannot be empty",
+    });
+  }
+
+  if (
+    expectedVersion === undefined ||
+    !Number.isInteger(expectedVersion) ||
+    expectedVersion < 0
+  ) {
+    return res.status(400).json({
+      message: "Invalid comment version. Refresh and try again.",
     });
   }
 
@@ -728,6 +745,13 @@ export const editcomment = async (req, res) => {
       });
     }
 
+    if ((existingComment.editVersion ?? 0) !== expectedVersion) {
+      return res.status(409).json({
+        message: "This comment was edited elsewhere. Refresh comments before editing again.",
+        conflict: true,
+      });
+    }
+
     const moderation = await moderateComment(
       commentbody.trim(),
       userid,
@@ -741,13 +765,42 @@ export const editcomment = async (req, res) => {
       });
     }
 
-    existingComment.commentbody = commentbody.trim();
-    existingComment.isEdited = true;
-    existingComment.editedAt = new Date();
+    const previousText = existingComment.commentbody;
+    const previousVersion = existingComment.editVersion ?? 0;
 
-    await existingComment.save();
+    const updatedComment = await comment.findOneAndUpdate(
+      {
+        _id: id,
+        editVersion: previousVersion,
+      },
+      {
+        $set: {
+          commentbody: commentbody.trim(),
+          isEdited: true,
+          editedAt: new Date(),
+          translations: {},
+        },
+        $push: {
+          editHistory: {
+            previousText,
+            editedAt: new Date(),
+          },
+        },
+        $inc: {
+          editVersion: 1,
+        },
+      },
+      { new: true, runValidators: true }
+    );
 
-    return res.status(200).json(existingComment);
+    if (!updatedComment) {
+      return res.status(409).json({
+        message: "This comment was edited elsewhere. Refresh comments before editing again.",
+        conflict: true,
+      });
+    }
+
+    return res.status(200).json(updatedComment);
   } catch (error) {
     console.error("Edit comment error:", error);
 
@@ -757,7 +810,11 @@ export const editcomment = async (req, res) => {
   }
 };
 
+
+
 export const reportcomment = async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
     const { commentid, reason } = req.body;
     const reporterid = req.user.id;
@@ -785,50 +842,57 @@ export const reportcomment = async (req, res) => {
       });
     }
 
-    const existingComment = await comment.findById(commentid);
+    let report;
 
-    if (!existingComment || existingComment.status === "DELETED") {
-      return res.status(404).json({
-        message: "Comment not found",
-      });
-    }
+    await session.withTransaction(async () => {
+      const existingComment = await comment.findById(commentid).session(session);
 
-    const existingReport = await commentReport.findOne({
-      commentid,
-      reporterid,
-    });
+      if (!existingComment || existingComment.status === "DELETED") {
+        const error = new Error("Comment not found");
+        error.statusCode = 404;
+        throw error;
+      }
 
-    if (existingReport) {
-      return res.status(409).json({
-        message: "You have already reported this comment",
-      });
-    }
+      const existingReport = await commentReport.findOne({
+        commentid,
+        reporterid,
+      }).session(session);
 
-    const report = new commentReport({
-      commentid,
-      reporterid,
-      reason,
-    });
+      if (existingReport) {
+        const error = new Error("You have already reported this comment");
+        error.statusCode = 409;
+        throw error;
+      }
 
-    await report.save();
+      const reports = await commentReport.create(
+        [{ commentid, reporterid, reason }],
+        { session }
+      );
 
-    existingComment.status = "FLAGGED";
-    await existingComment.save();
+      report = reports[0];
 
-    await commentModeration.create({
-      commentid,
-      action: "REPORTED",
-      reason,
-      performedBy: reporterid,
-      details: "Comment reported by user",
-    });
+      existingComment.status = "FLAGGED";
+      await existingComment.save({ session });
 
-    await commentModeration.create({
-      commentid,
-      action: "FLAGGED",
-      reason,
-      performedBy: reporterid,
-      details: "Comment automatically flagged for admin review",
+      await commentModeration.create(
+        [
+          {
+            commentid,
+            action: "REPORTED",
+            reason,
+            performedBy: reporterid,
+            details: "Comment reported by user",
+          },
+          {
+            commentid,
+            action: "FLAGGED",
+            reason,
+            performedBy: reporterid,
+            details: "Comment automatically flagged for admin review",
+          },
+        ],
+        { session }
+      );
     });
 
     return res.status(201).json({
@@ -837,6 +901,12 @@ export const reportcomment = async (req, res) => {
     });
   } catch (error) {
     console.error("Report comment error:", error);
+
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+      });
+    }
 
     if (error.code === 11000) {
       return res.status(409).json({
@@ -847,5 +917,7 @@ export const reportcomment = async (req, res) => {
     return res.status(500).json({
       message: "Something went wrong",
     });
+  } finally {
+    await session.endSession();
   }
 };

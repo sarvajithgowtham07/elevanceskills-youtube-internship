@@ -43,6 +43,22 @@ const commentschema = mongoose.Schema(
       type: Date,
       default: null,
     },
+    editVersion: {
+      type: Number,
+      default: 0
+    },
+    editHistory: [
+      {
+        previousText: {
+          type: String,
+          required: true,
+        },
+        editedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     likes: [
       {
         type: mongoose.Schema.Types.ObjectId,

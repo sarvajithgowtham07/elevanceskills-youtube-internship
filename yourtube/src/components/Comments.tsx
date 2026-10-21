@@ -32,6 +32,7 @@ interface Comment {
   isEdited?: boolean;
   editedAt?: string | null;
   status?: string;
+  editVersion?: number;
 }
 
 type SortOption = "newest" | "oldest" | "liked" | "relevant";
@@ -46,6 +47,7 @@ const Comments = ({ videoId }: CommentsProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [editingVersion, setEditingVersion] = useState<number>(0);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [isReplying, setIsReplying] = useState(false);
@@ -198,6 +200,7 @@ const Comments = ({ videoId }: CommentsProps) => {
           commentbody: newComment,
           usercommented: user.name || "Anonymous",
           userImage: user.image || "",
+          userLocation: user.location || "",
           commentedon: new Date().toISOString(),
           parentComment: null,
           likes: [],
@@ -239,10 +242,10 @@ const Comments = ({ videoId }: CommentsProps) => {
         prev.map((comment) =>
           comment._id === commentId
             ? {
-                ...comment,
-                likes: res.data.likes,
-                dislikes: res.data.dislikes,
-              }
+              ...comment,
+              likes: res.data.likes,
+              dislikes: res.data.dislikes,
+            }
             : comment
         )
       );
@@ -261,10 +264,10 @@ const Comments = ({ videoId }: CommentsProps) => {
         prev.map((comment) =>
           comment._id === commentId
             ? {
-                ...comment,
-                likes: res.data.likes,
-                dislikes: res.data.dislikes,
-              }
+              ...comment,
+              likes: res.data.likes,
+              dislikes: res.data.dislikes,
+            }
             : comment
         )
       );
@@ -299,6 +302,7 @@ const Comments = ({ videoId }: CommentsProps) => {
           commentbody: replyText,
           usercommented: user.name || "Anonymous",
           userImage: user.image || "",
+          userLocation: user.location || "",
           commentedon: new Date().toISOString(),
           parentComment: parentCommentId,
           likes: [],
@@ -334,6 +338,7 @@ const Comments = ({ videoId }: CommentsProps) => {
   const handleEdit = (comment: Comment) => {
     setEditingCommentId(comment._id);
     setEditText(comment.commentbody);
+    setEditingVersion(comment.editVersion ?? 0);
   };
 
   const handleUpdateComment = async () => {
@@ -344,6 +349,7 @@ const Comments = ({ videoId }: CommentsProps) => {
         {
           commentbody: editText,
           userid: user?._id,
+          expectedVersion: editingVersion,
         }
       );
       if (res.data) {
@@ -351,19 +357,34 @@ const Comments = ({ videoId }: CommentsProps) => {
           prev.map((c) =>
             c._id === editingCommentId
               ? {
-                  ...c,
-                  commentbody: editText.trim(),
-                  isEdited: true,
-                  editedAt: new Date().toISOString(),
-                }
+                ...c,
+                commentbody: res.data.commentbody,
+                isEdited: res.data.isEdited,
+                editedAt: res.data.editedAt,
+                editVersion: res.data.editVersion,
+              }
               : c
           )
         );
         setEditingCommentId(null);
         setEditText("");
       }
-    } catch (error) {
-      console.error("Update error:", error);
+    } catch (error: any) {
+      if (error?.response?.status === 409) {
+        alert(
+          error.response.data.message ||
+          "This comment changed elsewhere. Reload comments before editing again."
+        );
+        await loadComments();
+        setEditingCommentId(null);
+        setEditText("");
+      } else {
+        console.error(
+          error?.response?.data?.message || "Update error:",
+          error
+        );
+        alert(error?.response?.data?.message || "Unable to update comment.");
+      }
     }
   };
 
@@ -374,12 +395,29 @@ const Comments = ({ videoId }: CommentsProps) => {
       });
       if (res.data.comment) {
         setComments((prev) =>
-          prev.map((comment) =>
-            comment._id === id
-              ? { ...comment, status: "DELETED", commentbody: "[deleted]", isEdited: false }
-              : comment
+          prev.map((c) =>
+            c._id === editingCommentId
+              ? {
+                ...c,
+                commentbody: res.data.commentbody,
+                isEdited: res.data.isEdited,
+                editedAt: res.data.editedAt,
+                editVersion: res.data.editVersion,
+              }
+              : c
           )
         );
+        setTranslations((prev) => {
+          const updated = { ...prev };
+          delete updated[editingCommentId!];
+          return updated;
+        });
+
+        setTranslationErrors((prev) => {
+          const updated = { ...prev };
+          delete updated[editingCommentId!];
+          return updated;
+        });
         setEditingCommentId((current) => (current === id ? null : current));
         setReplyingTo((current) => (current === id ? null : current));
       }
@@ -409,7 +447,7 @@ const Comments = ({ videoId }: CommentsProps) => {
 
   const getReplies = (commentId: string) => {
     return comments.filter((comment) => {
-      if (!comment.parentComment || comment.status === "DELETED") return false;
+      if (!comment.parentComment) return false;
 
       const parentId =
         typeof comment.parentComment === "object"
@@ -444,13 +482,16 @@ const Comments = ({ videoId }: CommentsProps) => {
     });
 
     try {
-      const targetLanguage = /[\u0C00-\u0C7F]/.test(comment.commentbody)
-        ? "en"
-        : "te";
+      const isTelugu = /[\u0C00-\u0C7F]/.test(comment.commentbody);
+      const sourceLanguage = isTelugu ? "te" : "en";
+      const targetLanguage = isTelugu ? "en" : "te";
+
       const response = await axiosInstance.post("/comment/translate", {
         text: comment.commentbody,
+        sourceLanguage,
         targetLanguage,
       });
+
       setTranslations((prev) => ({
         ...prev,
         [id]: response.data.translatedText,
@@ -482,7 +523,7 @@ const Comments = ({ videoId }: CommentsProps) => {
 
   const sortedComments = useMemo(() => {
     const topLevelComments = comments.filter(
-      (comment) => !comment.parentComment && comment.status !== "DELETED"
+      (comment) => !comment.parentComment
     );
 
     return [...topLevelComments].sort((a, b) => {
@@ -715,8 +756,18 @@ const Comments = ({ videoId }: CommentsProps) => {
                     <span className="font-medium text-sm">
                       {comment.usercommented}
                     </span>
-                    <span className="text-xs text-gray-600">
+                    {comment.userLocation && (
+                      <span className="text-xs text-gray-500">
+                        {comment.userLocation}
+                      </span>
+                    )}
+                    <span
+                      className="text-xs text-gray-600"
+                      title={new Date(comment.commentedon).toLocaleString()}
+                    >
                       {formatDistanceToNow(new Date(comment.commentedon))} ago
+                      {" · "}
+                      {new Date(comment.commentedon).toLocaleString()}
                     </span>
                     {comment.isEdited && (
                       <span className="text-xs text-gray-500">(edited)</span>
@@ -749,32 +800,38 @@ const Comments = ({ videoId }: CommentsProps) => {
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm">
-                        {renderCommentText(
-                          translations[comment._id] || comment.commentbody
-                        )}
-                      </p>
+                      {comment.status === "DELETED" ? (
+                        <p className="text-sm italic text-gray-400">This comment was deleted.</p>
+                      ) : (
+                        <p className="text-sm">
+                          {renderCommentText(
+                            translations[comment._id] || comment.commentbody
+                          )}
+                        </p>
+                      )}
 
-                      <div className="mt-2 flex items-center gap-3 flex-wrap">
-                        <Button
-                          variant="ghost"
-                          onClick={() => handleTranslate(comment)}
-                          disabled={translatingIds.includes(comment._id)}
-                        >
-                          {translatingIds.includes(comment._id)
-                            ? "Translating..."
-                            : translations[comment._id]
-                              ? "Show Original"
-                              : /[\u0C00-\u0C7F]/.test(comment.commentbody)
-                                ? "Translate to English"
-                                : "Translate to Telugu"}
-                        </Button>
-                        {translationErrors[comment._id] && (
-                          <span className="text-sm text-red-500">
-                            {translationErrors[comment._id]}
-                          </span>
-                        )}
-                      </div>
+                      {comment.status !== "DELETED" && (
+                        <div className="mt-2 flex items-center gap-3 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            onClick={() => handleTranslate(comment)}
+                            disabled={translatingIds.includes(comment._id)}
+                          >
+                            {translatingIds.includes(comment._id)
+                              ? "Translating..."
+                              : translations[comment._id]
+                                ? "Show Original"
+                                : /[\u0C00-\u0C7F]/.test(comment.commentbody)
+                                  ? "Translate to English"
+                                  : "Translate to Telugu"}
+                          </Button>
+                          {translationErrors[comment._id] && (
+                            <span className="text-sm text-red-500">
+                              {translationErrors[comment._id]}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
                         <button
@@ -944,11 +1001,18 @@ const Comments = ({ videoId }: CommentsProps) => {
                                   <span className="font-medium text-sm">
                                     {reply.usercommented}
                                   </span>
-                                  <span className="text-xs text-gray-600">
-                                    {formatDistanceToNow(
-                                      new Date(reply.commentedon)
-                                    )}{" "}
-                                    ago
+                                  {reply.userLocation && (
+                                    <span className="text-xs text-gray-500">
+                                      {reply.userLocation}
+                                    </span>
+                                  )}
+                                  <span
+                                    className="text-xs text-gray-600"
+                                    title={new Date(reply.commentedon).toLocaleString()}
+                                  >
+                                    {formatDistanceToNow(new Date(reply.commentedon))} ago
+                                    {" · "}
+                                    {new Date(reply.commentedon).toLocaleString()}
                                   </span>
                                   {reply.isEdited && (
                                     <span className="text-xs text-gray-500">
@@ -956,31 +1020,37 @@ const Comments = ({ videoId }: CommentsProps) => {
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-sm">
-                                  {renderCommentText(
-                                    translations[reply._id] || reply.commentbody
-                                  )}
-                                </p>
-                                <div className="mt-2 flex items-center gap-3 flex-wrap">
-                                  <Button
-                                    variant="ghost"
-                                    onClick={() => handleTranslate(reply)}
-                                    disabled={translatingIds.includes(reply._id)}
-                                  >
-                                    {translatingIds.includes(reply._id)
-                                      ? "Translating..."
-                                      : translations[reply._id]
-                                        ? "Show Original"
-                                        : /[\u0C00-\u0C7F]/.test(reply.commentbody)
-                                          ? "Translate to English"
-                                          : "Translate to Telugu"}
-                                  </Button>
-                                  {translationErrors[reply._id] && (
-                                    <span className="text-sm text-red-500">
-                                      {translationErrors[reply._id]}
-                                    </span>
-                                  )}
-                                </div>
+                                {reply.status === "DELETED" ? (
+                                  <p className="text-sm italic text-gray-500">[deleted]</p>
+                                ) : (
+                                  <p className="text-sm">
+                                    {renderCommentText(
+                                      translations[reply._id] || reply.commentbody
+                                    )}
+                                  </p>
+                                )}
+                                {reply.status !== "DELETED" && (
+                                  <div className="mt-2 flex items-center gap-3 flex-wrap">
+                                    <Button
+                                      variant="ghost"
+                                      onClick={() => handleTranslate(reply)}
+                                      disabled={translatingIds.includes(reply._id)}
+                                    >
+                                      {translatingIds.includes(reply._id)
+                                        ? "Translating..."
+                                        : translations[reply._id]
+                                          ? "Show Original"
+                                          : /[\u0C00-\u0C7F]/.test(reply.commentbody)
+                                            ? "Translate to English"
+                                            : "Translate to Telugu"}
+                                    </Button>
+                                    {translationErrors[reply._id] && (
+                                      <span className="text-sm text-red-500">
+                                        {translationErrors[reply._id]}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
                                   <button
                                     onClick={() => handleLike(reply._id)}
@@ -996,37 +1066,40 @@ const Comments = ({ videoId }: CommentsProps) => {
                                   >
                                     👎 {reply.dislikes?.length || 0}
                                   </button>
-                                  {reply.userid === user?._id && (
-                                    <>
+                                  {reply.status !== "DELETED" &&
+                                    reply.userid === user?._id && (
+                                      <>
+                                        <button
+                                          onClick={() => handleEdit(reply)}
+                                          className="hover:text-blue-500"
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={() => handleDelete(reply._id)}
+                                          className="hover:text-red-500"
+                                        >
+                                          Delete
+                                        </button>
+                                      </>
+                                    )}
+                                  {user &&
+                                    reply.status !== "DELETED" &&
+                                    reply.userid !== user._id && (
                                       <button
-                                        onClick={() => handleEdit(reply)}
-                                        className="hover:text-blue-500"
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        onClick={() => handleDelete(reply._id)}
+                                        onClick={() => {
+                                          setReportingCommentId(
+                                            reportingCommentId === reply._id
+                                              ? null
+                                              : reply._id
+                                          );
+                                          setReportReason("SPAM");
+                                        }}
                                         className="hover:text-red-500"
                                       >
-                                        Delete
+                                        Report
                                       </button>
-                                    </>
-                                  )}
-                                  {user && reply.userid !== user._id && (
-                                    <button
-                                      onClick={() => {
-                                        setReportingCommentId(
-                                          reportingCommentId === reply._id
-                                            ? null
-                                            : reply._id
-                                        );
-                                        setReportReason("SPAM");
-                                      }}
-                                      className="hover:text-red-500"
-                                    >
-                                      Report
-                                    </button>
-                                  )}
+                                    )}
                                 </div>
                                 {renderReportBox(reply._id)}
                               </div>

@@ -1,4 +1,3 @@
-
 const translateText = async (req, res) => {
   try {
     const { text, targetLanguage } = req.body;
@@ -11,11 +10,19 @@ const translateText = async (req, res) => {
       return res.status(400).json({ message: "Text must be 500 characters or fewer." });
     }
 
-    if (!["en", "te"].includes(targetLanguage)) {
-      return res.status(400).json({ message: "Unsupported target language." });
+    const supportedLanguages = ["en", "te"];
+    const sourceLanguage = req.body.sourceLanguage;
+
+    if (
+      !supportedLanguages.includes(targetLanguage) ||
+      !supportedLanguages.includes(sourceLanguage)
+    ) {
+      return res.status(400).json({ message: "Unsupported source or target language." });
     }
 
-    const sourceLanguage = targetLanguage === "te" ? "en" : "te";
+    if (sourceLanguage === targetLanguage) {
+      return res.status(400).json({ message: "Source and target languages must be different." });
+    }
 
     const params = new URLSearchParams({
       q: text.trim(),
@@ -39,14 +46,13 @@ const translateText = async (req, res) => {
       });
     }
 
-    return res.status(200).json({ translatedText, targetLanguage });
+    return res.status(200).json({ translatedText, sourceLanguage, targetLanguage });
   } catch (error) {
-  console.error("Translation error:", error);
-  return res.status(500).json({
-    message: "Translation failed. Please try again.",
-    error: error.message
-  });
-}
+    console.error("Translation error:", error);
+    return res.status(500).json({
+      message: "Translation failed. Please try again."
+    });
+  }
 };
 
 export { translateText };
