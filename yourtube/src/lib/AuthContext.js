@@ -20,6 +20,10 @@ export const UserProvider = ({ children }) => {
   };
 
   const login = (userdata, token) => {
+    if (!userdata?._id || !token) {
+      throw new Error("Valid user and authentication token are required");
+    }
+
     setUser(userdata);
     localStorage.setItem("user", JSON.stringify(userdata));
     localStorage.setItem("token", token);

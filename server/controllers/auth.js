@@ -498,7 +498,7 @@ export const verifyLoginOTP = async (req, res) => {
 
 export const updateprofile = async (req, res) => {
   const { id: _id } = req.params;
-  const { channelname, description } = req.body;
+  const { channelname, description, channelImage } = req.body;
 
   if (req.user.id !== _id) {
     return res.status(403).json({
@@ -519,6 +519,7 @@ export const updateprofile = async (req, res) => {
         $set: {
           channelname,
           description,
+          channelImage,
         },
       },
       { new: true }
@@ -640,6 +641,7 @@ export const getTrustedDevices = async (req, res) => {
   }
 };
 
+
 export const revokeTrustedDevice = async (req, res) => {
   const { userId, deviceId } = req.params;
 
@@ -651,7 +653,7 @@ export const revokeTrustedDevice = async (req, res) => {
 
   if (
     !mongoose.Types.ObjectId.isValid(userId) ||
-    !mongoose.Types.ObjectId.isValid(deviceId)
+    !/^[a-fA-F0-9]{64}$/.test(deviceId)
   ) {
     return res.status(400).json({
       message: "Invalid request",
@@ -660,8 +662,8 @@ export const revokeTrustedDevice = async (req, res) => {
 
   try {
     const device = await TrustedDevice.findOneAndDelete({
-      _id: deviceId,
       userId,
+      deviceId,
     });
 
     if (!device) {
@@ -681,6 +683,7 @@ export const revokeTrustedDevice = async (req, res) => {
     });
   }
 };
+
 
 export const searchUsers = async (req, res) => {
   const { query } = req.params;

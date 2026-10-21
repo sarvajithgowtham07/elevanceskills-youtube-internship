@@ -1,4 +1,3 @@
-
 import Subscription from "../Modals/Subscription.js";
 
 export const getMySubscription = async (req, res) => {
@@ -13,9 +12,20 @@ export const getMySubscription = async (req, res) => {
       });
     }
 
+    if (
+      subscription.endDate &&
+      subscription.endDate < new Date() &&
+      subscription.status === "active"
+    ) {
+      subscription.status = "expired";
+      await subscription.save();
+    }
+
     return res.status(200).json(subscription);
   } catch (error) {
     console.error("Get subscription error:", error);
-    return res.status(500).json({ message: "Unable to retrieve subscription" });
+    return res.status(500).json({
+      message: "Unable to retrieve subscription",
+    });
   }
 };

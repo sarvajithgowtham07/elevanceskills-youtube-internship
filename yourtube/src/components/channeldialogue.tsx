@@ -16,55 +16,80 @@ import { useUser } from "@/lib/AuthContext";
 
 const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
   const { user, login } = useUser();
-  // const user: any = {
-  //   id: "1",
-  //   name: "John Doe",
-  //   email: "john@example.com",
-  //   image: "https://github.com/shadcn.png?height=32&width=32",
-  // };
   const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
     description: "",
+    channelImage: "",
   });
   const [isSubmitting, setisSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
   useEffect(() => {
+    if (!isopen) return;
+
+    setErrorMessage("");
+
     if (channeldata && mode === "edit") {
       setFormData({
         name: channeldata.name || "",
         description: channeldata.description || "",
+        channelImage: channeldata.channelImage || "",
       });
     } else {
       setFormData({
         name: user?.name || "",
         description: "",
+        channelImage: "",
       });
     }
-  }, [channeldata]);
+  }, [channeldata, mode, user, isopen]);
+
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
+
   const handlesubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const payload = {
-      channelname: formData.name,
-      description: formData.description,
-    };
-    const response = await axiosInstance.patch(
-      `/user/update/${user._id}`,
-      payload
-    );
-    login(response?.data);
-    router.push(`/channel/${user?._id}`);
-    setFormData({
-      name: "",
-      description: "",
-    });
-    onclose();
+
+    if (!user || isSubmitting) return;
+
+    if (!formData.name.trim()) {
+      setErrorMessage("Channel name is required.");
+      return;
+    }
+
+    setisSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      const payload = {
+        channelname: formData.name,
+        description: formData.description,
+        channelImage: formData.channelImage,
+      };
+
+      const response = await axiosInstance.patch(
+        `/user/update/${user._id}`,
+        payload
+      );
+
+      login(response?.data);
+      onclose();
+      router.push(`/channel/${user._id}`);
+    } catch (error: any) {
+      setErrorMessage(
+        error?.response?.data?.message ||
+        "Unable to save your channel. Please try again."
+      );
+    } finally {
+      setisSubmitting(false);
+    }
   };
+
   return (
     <Dialog open={isopen} onOpenChange={onclose}>
       <DialogContent className="sm:max-w-md md:max-w-lg">
@@ -75,7 +100,6 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
         </DialogHeader>
 
         <form onSubmit={handlesubmit} className="space-y-6">
-          {/* Channel Name */}
           <div className="space-y-2">
             <Label htmlFor="name">Channel Name</Label>
             <Input
@@ -85,7 +109,7 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
               onChange={handleChange}
             />
           </div>
-          {/* Channel Description */}
+
           <div className="space-y-2">
             <Label htmlFor="description">Channel Description</Label>
             <Textarea
@@ -98,6 +122,28 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="channelImage">Channel Logo URL</Label>
+            <Input
+              id="channelImage"
+              name="channelImage"
+              value={formData.channelImage}
+              onChange={handleChange}
+              placeholder="https://example.com/neffex-logo.png"
+            />
+            {formData.channelImage && (
+              <img
+                src={formData.channelImage}
+                alt="Channel logo preview"
+                className="h-16 w-16 rounded-full object-cover"
+              />
+            )}
+          </div>
+
+          {errorMessage && (
+            <p className="text-sm text-red-500">{errorMessage}</p>
+          )}
+
           <DialogFooter className="flex justify-between sm:justify-between">
             <Button type="button" variant="outline" onClick={onclose}>
               Cancel
@@ -106,8 +152,8 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
               {isSubmitting
                 ? "Saving..."
                 : mode === "create"
-                ? "Create Channel"
-                : "Save Changes"}
+                  ? "Create Channel"
+                  : "Save Changes"}
             </Button>
           </DialogFooter>
         </form>

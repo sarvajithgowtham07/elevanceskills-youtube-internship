@@ -1,3 +1,4 @@
+
 import users from "../Modals/Auth.js";
 import comment from "../Modals/comment.js";
 import mongoose from "mongoose";
@@ -39,14 +40,10 @@ const containsAbusiveWords = (text) => {
 
 const containsMaliciousLink = (text) => {
   const urlPattern = /(https?:\/\/|www\.)[^\s]+/gi;
-
   const suspiciousPattern =
     /(javascript:|data:text\/html|<script|javascript%3a)/gi;
 
-  return (
-    urlPattern.test(text) ||
-    suspiciousPattern.test(text)
-  );
+  return urlPattern.test(text) || suspiciousPattern.test(text);
 };
 
 const containsRepeatedCharacters = (text) => {
@@ -57,8 +54,7 @@ const containsExcessiveSpecialCharacters = (text) => {
   const specialCharacters =
     text.match(/[!@#$%^&*()_+=\[\]{};:'",.<>/?\\|`~]/g) || [];
 
-  const nonSpaceCharacters =
-    text.replace(/\s/g, "").length;
+  const nonSpaceCharacters = text.replace(/\s/g, "").length;
 
   if (nonSpaceCharacters < 10) {
     return false;
@@ -69,18 +65,12 @@ const containsExcessiveSpecialCharacters = (text) => {
 
 const containsExcessiveEmoji = (text) => {
   const emojis =
-    text.match(
-      /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu
-    ) || [];
+    text.match(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu) || [];
 
   return emojis.length >= 8;
 };
 
-const moderateComment = async (
-  text,
-  userid = null,
-  videoid = null
-) => {
+const moderateComment = async (text, userid = null, videoid = null) => {
   if (containsAbusiveWords(text)) {
     return {
       allowed: false,
@@ -91,8 +81,7 @@ const moderateComment = async (
   if (containsMaliciousLink(text)) {
     return {
       allowed: false,
-      message:
-        "Links or potentially malicious content are not allowed.",
+      message: "Links or potentially malicious content are not allowed.",
     };
   }
 
@@ -106,8 +95,7 @@ const moderateComment = async (
   if (containsExcessiveSpecialCharacters(text)) {
     return {
       allowed: false,
-      message:
-        "Excessive special characters are not allowed.",
+      message: "Excessive special characters are not allowed.",
     };
   }
 
@@ -120,12 +108,15 @@ const moderateComment = async (
 
   if (userid && videoid) {
     const normalizedText = normalizeText(text);
-    const existingComments = await comment.find({
-      userid,
-      videoid,
-      parentComment: null,
-      status: { $ne: "DELETED" }
-    }).select("commentbody");
+
+    const existingComments = await comment
+      .find({
+        userid,
+        videoid,
+        parentComment: null,
+        status: { $ne: "DELETED" },
+      })
+      .select("commentbody");
 
     const duplicateComment = existingComments.some(
       (existing) => normalizeText(existing.commentbody) === normalizedText
@@ -134,14 +125,12 @@ const moderateComment = async (
     if (duplicateComment) {
       return {
         allowed: false,
-        message: "You have already posted this comment."
+        message: "You have already posted this comment.",
       };
     }
   }
 
-  return {
-    allowed: true,
-  };
+  return { allowed: true };
 };
 
 const verifyCaptcha = async (captchaToken) => {
@@ -169,8 +158,7 @@ const verifyCaptcha = async (captchaToken) => {
       {
         method: "POST",
         headers: {
-          "Content-Type":
-            "application/x-www-form-urlencoded",
+          "Content-Type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({
           secret: secretKey,
@@ -193,9 +181,7 @@ const verifyCaptcha = async (captchaToken) => {
       };
     }
 
-    return {
-      success: true,
-    };
+    return { success: true };
   } catch (error) {
     console.error("CAPTCHA verification error:", error);
 
@@ -206,10 +192,7 @@ const verifyCaptcha = async (captchaToken) => {
   }
 };
 
-const checkCommentRateLimit = async (
-  userid,
-  captchaToken = null
-) => {
+const checkCommentRateLimit = async (userid, captchaToken = null) => {
   const now = new Date();
 
   let rateRecord = await commentRateLimit.findOne({ userid });
@@ -221,16 +204,15 @@ const checkCommentRateLimit = async (
       captchaRequired: false,
     });
 
-    return {
-      allowed: true,
-    };
+    return { allowed: true };
   }
 
   if (rateRecord.blockedUntil && rateRecord.blockedUntil > now) {
     return {
       allowed: false,
       captchaRequired: true,
-      message: "Too many comments in a short time. Please complete the CAPTCHA.",
+      message:
+        "Too many comments in a short time. Please complete the CAPTCHA.",
     };
   }
 
@@ -257,9 +239,7 @@ const checkCommentRateLimit = async (
     };
   }
 
-  const oneMinuteAgo = new Date(
-    now.getTime() - 60 * 1000
-  );
+  const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
 
   const recentTimestamps = rateRecord.timestamps.filter(
     (timestamp) => timestamp > oneMinuteAgo
@@ -267,9 +247,7 @@ const checkCommentRateLimit = async (
 
   if (recentTimestamps.length >= 5) {
     rateRecord.timestamps = recentTimestamps;
-    rateRecord.blockedUntil = new Date(
-      now.getTime() + 60 * 1000
-    );
+    rateRecord.blockedUntil = new Date(now.getTime() + 60 * 1000);
     rateRecord.captchaRequired = true;
 
     await rateRecord.save();
@@ -289,19 +267,12 @@ const checkCommentRateLimit = async (
 
   await rateRecord.save();
 
-  return {
-    allowed: true,
-  };
+  return { allowed: true };
 };
 
 export const postcomment = async (req, res) => {
-  const {
-    videoid,
-    commentbody,
-    parentComment,
-    mentions,
-    captchaToken,
-  } = req.body;
+  const { videoid, commentbody, parentComment, mentions, captchaToken } =
+    req.body;
 
   const userid = req.user.id;
 
@@ -321,17 +292,13 @@ export const postcomment = async (req, res) => {
   }
 
   try {
-    const rateLimit = await checkCommentRateLimit(
-      userid,
-      captchaToken
-    );
+    const rateLimit = await checkCommentRateLimit(userid, captchaToken);
 
     if (!rateLimit.allowed) {
       return res.status(429).json({
         message: rateLimit.message,
         rateLimited: true,
-        captchaRequired:
-          rateLimit.captchaRequired || false,
+        captchaRequired: rateLimit.captchaRequired || false,
       });
     }
 
@@ -357,7 +324,7 @@ export const postcomment = async (req, res) => {
 
       const parent = await comment.findById(parentComment);
 
-      if (!parent) {
+      if (!parent || parent.status === "DELETED") {
         return res.status(404).json({
           message: "Parent comment not found",
         });
@@ -416,7 +383,7 @@ export const getallcomment = async (req, res) => {
 
   if (!mongoose.Types.ObjectId.isValid(videoid)) {
     return res.status(400).json({
-      message: "Invalid video"
+      message: "Invalid video",
     });
   }
 
@@ -429,9 +396,7 @@ export const getallcomment = async (req, res) => {
 
     const formattedComments = comments.map((item) => {
       const author =
-        item.userid && typeof item.userid === "object"
-          ? item.userid
-          : null;
+        item.userid && typeof item.userid === "object" ? item.userid : null;
 
       return {
         ...item,
@@ -439,7 +404,7 @@ export const getallcomment = async (req, res) => {
         userImage: author?.image || author?.profilePicture || "",
         userLocation: author?.location || "",
         usercommented:
-          author?.channelname || author?.name || item.usercommented
+          author?.channelname || author?.name || item.usercommented,
       };
     });
 
@@ -448,19 +413,14 @@ export const getallcomment = async (req, res) => {
     console.error("Get comments error:", error);
 
     return res.status(500).json({
-      message: "Something went wrong"
+      message: "Something went wrong",
     });
   }
 };
 
 export const replycomment = async (req, res) => {
-  const {
-    videoid,
-    commentbody,
-    parentComment,
-    mentions,
-    captchaToken,
-  } = req.body;
+  const { videoid, commentbody, parentComment, mentions, captchaToken } =
+    req.body;
 
   const userid = req.user.id;
 
@@ -481,17 +441,13 @@ export const replycomment = async (req, res) => {
   }
 
   try {
-    const rateLimit = await checkCommentRateLimit(
-      userid,
-      captchaToken
-    );
+    const rateLimit = await checkCommentRateLimit(userid, captchaToken);
 
     if (!rateLimit.allowed) {
       return res.status(429).json({
         message: rateLimit.message,
         rateLimited: true,
-        captchaRequired:
-          rateLimit.captchaRequired || false,
+        captchaRequired: rateLimit.captchaRequired || false,
       });
     }
 
@@ -510,7 +466,7 @@ export const replycomment = async (req, res) => {
 
     const parent = await comment.findById(parentComment);
 
-    if (!parent) {
+    if (!parent || parent.status === "DELETED") {
       return res.status(404).json({
         message: "Parent comment not found",
       });
@@ -523,9 +479,7 @@ export const replycomment = async (req, res) => {
     }
 
     const validMentions = Array.isArray(mentions)
-      ? mentions.filter((id) =>
-        mongoose.Types.ObjectId.isValid(id)
-      )
+      ? mentions.filter((id) => mongoose.Types.ObjectId.isValid(id))
       : [];
 
     const authenticatedUser = await users
@@ -581,7 +535,7 @@ export const likecomment = async (req, res) => {
   try {
     const existingComment = await comment.findById(id);
 
-    if (!existingComment) {
+    if (!existingComment || existingComment.status === "DELETED") {
       return res.status(404).json({
         message: "Comment not found",
       });
@@ -629,7 +583,7 @@ export const dislikecomment = async (req, res) => {
   try {
     const existingComment = await comment.findById(id);
 
-    if (!existingComment) {
+    if (!existingComment || existingComment.status === "DELETED") {
       return res.status(404).json({
         message: "Comment not found",
       });
@@ -823,11 +777,7 @@ export const reportcomment = async (req, res) => {
       });
     }
 
-    const validReasons = [
-      "SPAM",
-      "HARASSMENT",
-      "OFFENSIVE_CONTENT",
-    ];
+    const validReasons = ["SPAM", "HARASSMENT", "OFFENSIVE_CONTENT"];
 
     if (!validReasons.includes(reason)) {
       return res.status(400).json({
@@ -837,7 +787,7 @@ export const reportcomment = async (req, res) => {
 
     const existingComment = await comment.findById(commentid);
 
-    if (!existingComment) {
+    if (!existingComment || existingComment.status === "DELETED") {
       return res.status(404).json({
         message: "Comment not found",
       });

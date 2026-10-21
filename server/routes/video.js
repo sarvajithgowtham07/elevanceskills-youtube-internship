@@ -4,11 +4,12 @@ import { getallvideo, uploadvideo } from "../controllers/video.js";
 import { downloadVideo } from "../controllers/download.js";
 import upload from "../filehelper/filehelper.js";
 import verifyToken from "../middleware/authMiddleware.js";
+import { getDownloadHistory } from "../controllers/downloadHistory.js";
 
 const routes = express.Router();
 
 routes.post("/upload", upload.single("file"), uploadvideo);
 routes.get("/getall", getallvideo);
 routes.get("/download/:videoId", verifyToken, downloadVideo);
-
+routes.get("/downloads/history", verifyToken, getDownloadHistory);
 export default routes;
