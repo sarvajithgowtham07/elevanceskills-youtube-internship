@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useUser } from "@/lib/AuthContext";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -10,13 +10,28 @@ export default function OTPVerification() {
     otpRequired,
     pendingLogin,
     verifyOTP,
+    resendOTP,
     cancelOTP,
   } = useUser();
 
   const [otp, setOtp] = useState("");
   const [trustDevice, setTrustDevice] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(60);
+  const [resendsRemaining, setResendsRemaining] = useState(3);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+
+    const timer = setInterval(() => {
+      setCooldown((previous) => Math.max(0, previous - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   if (!otpRequired || !pendingLogin) {
     return null;
@@ -30,6 +45,7 @@ export default function OTPVerification() {
 
     setLoading(true);
     setError("");
+    setSuccess("");
 
     try {
       const result = await verifyOTP(otp, trustDevice);
@@ -43,6 +59,35 @@ export default function OTPVerification() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResendLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const response = await resendOTP();
+
+      setOtp("");
+      setCooldown(response.cooldownSeconds || 60);
+      setResendsRemaining(response.resendsRemaining);
+      setSuccess(response.message || "New OTP sent successfully");
+    } catch (error: any) {
+      const data = error?.response?.data;
+
+      if (data?.cooldownSeconds) {
+        setCooldown(data.cooldownSeconds);
+      }
+
+      if (data?.resendsRemaining !== undefined) {
+        setResendsRemaining(data.resendsRemaining);
+      }
+
+      setError(data?.message || "Unable to resend OTP");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -85,27 +130,54 @@ export default function OTPVerification() {
         </label>
 
         {error && (
-          <p className="text-sm text-red-500 mt-2">
+          <p className="text-sm text-red-500 mt-3">
             {error}
           </p>
         )}
 
-        <div className="flex gap-3 mt-6">
+        {success && (
+          <p className="text-sm text-green-600 mt-3">
+            {success}
+          </p>
+        )}
+
+        <div className="flex gap-2 mt-6">
           <Button
             type="button"
             onClick={cancelOTP}
             variant="outline"
             className="flex-1"
-            disabled={loading}
+            disabled={loading || resendLoading}
           >
             Cancel
           </Button>
 
           <Button
             type="button"
+            onClick={handleResend}
+            variant="outline"
+            className="flex-1"
+            disabled={
+              loading ||
+              resendLoading ||
+              cooldown > 0 ||
+              resendsRemaining <= 0
+            }
+          >
+            {resendLoading
+              ? "Sending..."
+              : cooldown > 0
+                ? `Resend (${cooldown}s)`
+                : resendsRemaining <= 0
+                  ? "Limit reached"
+                  : "Resend OTP"}
+          </Button>
+
+          <Button
+            type="button"
             onClick={handleVerify}
             className="flex-1"
-            disabled={loading || otp.length !== 6}
+            disabled={loading || resendLoading || otp.length !== 6}
           >
             {loading ? "Verifying..." : "Verify"}
           </Button>
@@ -113,6 +185,10 @@ export default function OTPVerification() {
 
         <p className="text-xs text-muted-foreground text-center mt-5">
           The code expires in 10 minutes.
+        </p>
+
+        <p className="text-xs text-muted-foreground text-center mt-1">
+          Resends remaining: {resendsRemaining}/3
         </p>
       </div>
     </div>

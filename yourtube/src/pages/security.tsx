@@ -14,7 +14,19 @@ import {
 } from "lucide-react";
 
 const SecurityPage = () => {
-  const { user } = useUser();
+  const {
+    user,
+    sendPhoneOTP,
+    verifyPhoneOTP,
+    phoneLoading
+  } = useUser();
+
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneSuccess, setPhoneSuccess] = useState("");
+
   const [loginHistory, setLoginHistory] = useState<any[]>([]);
   const [trustedDevices, setTrustedDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,13 +64,38 @@ const SecurityPage = () => {
         `/user/trusted-devices/${user._id}/${deviceId}`
       );
 
-      setTrustedDevices((devices) =>
-        devices.filter((device) => device._id !== deviceId)
-      );
+      setTrustedDevices((devices) => devices.filter((device) => device._id !== deviceId));
     } catch (error) {
       console.error("Revoke device error:", error);
     } finally {
       setRevokingDevice(null);
+    }
+  };
+
+  const handleSendPhoneOTP = async () => {
+    setPhoneError("");
+    setPhoneSuccess("");
+
+    try {
+      await sendPhoneOTP(phoneNumber);
+      setOtpSent(true);
+      setPhoneSuccess("OTP sent successfully.");
+    } catch (error: any) {
+      setPhoneError(error.message || "Unable to send OTP.");
+    }
+  };
+
+  const handleVerifyPhoneOTP = async () => {
+    setPhoneError("");
+    setPhoneSuccess("");
+
+    try {
+      await verifyPhoneOTP(otp);
+      setOtpSent(false);
+      setOtp("");
+      setPhoneSuccess("Your mobile number has been verified successfully.");
+    } catch (error: any) {
+      setPhoneError(error.message || "OTP verification failed.");
     }
   };
 
@@ -114,6 +151,99 @@ const SecurityPage = () => {
             Review your recent login activity and trusted devices.
           </p>
         </div>
+
+        <section className="border rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <Smartphone className="w-6 h-6" />
+            <div>
+              <h2 className="text-xl font-semibold">
+                Mobile Number Verification
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Verify your mobile number using Firebase Phone Authentication.
+              </p>
+            </div>
+          </div>
+
+          {user.phoneVerified ? (
+            <div className="flex items-center gap-3 text-green-600">
+              <CheckCircle className="w-5 h-5" />
+              <div>
+                <p className="font-medium">Mobile number verified</p>
+                <p className="text-sm">{user.phone}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Mobile Number
+                </label>
+
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="+919876543210"
+                  disabled={otpSent || phoneLoading}
+                  className="w-full border rounded-lg px-4 py-3 bg-transparent"
+                />
+
+                <p className="text-xs text-muted-foreground mt-2">
+                  Enter your number with country code. Example: +919876543210
+                </p>
+              </div>
+
+              {!otpSent ? (
+                <button
+                  type="button"
+                  onClick={handleSendPhoneOTP}
+                  disabled={phoneLoading || !phoneNumber}
+                  className="px-5 py-2.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
+                >
+                  {phoneLoading ? "Sending OTP..." : "Send OTP"}
+                </button>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Enter OTP
+                    </label>
+
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                      placeholder="Enter 6-digit OTP"
+                      className="w-full border rounded-lg px-4 py-3 bg-transparent"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyPhoneOTP}
+                    disabled={phoneLoading || otp.length !== 6}
+                    className="px-5 py-2.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
+                  >
+                    {phoneLoading ? "Verifying..." : "Verify OTP"}
+                  </button>
+                </div>
+              )}
+
+              {phoneError && (
+                <p className="text-sm text-red-500">{phoneError}</p>
+              )}
+
+              {phoneSuccess && (
+                <p className="text-sm text-green-600">{phoneSuccess}</p>
+              )}
+
+              <div id="phone-recaptcha"></div>
+            </div>
+          )}
+        </section>
 
         <section className="border rounded-xl p-6">
           <div className="flex items-center justify-between mb-5">
@@ -257,14 +387,13 @@ const SecurityPage = () => {
                         </div>
 
                         <span
-                          className={`text-xs font-medium px-2 py-1 rounded-full ${
-                            login.loginStatus === "SUCCESS" ||
-                            login.loginStatus === "OTP_VERIFIED"
+                          className={`text-xs font-medium px-2 py-1 rounded-full ${login.loginStatus === "SUCCESS" ||
+                              login.loginStatus === "OTP_VERIFIED"
                               ? "bg-green-100 text-green-700"
                               : login.loginStatus === "OTP_REQUIRED"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
                         >
                           {login.loginStatus}
                         </span>

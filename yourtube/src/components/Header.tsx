@@ -8,6 +8,7 @@ import {
   VideoIcon,
   Sun,
   Moon,
+  Monitor,
 } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -173,19 +174,28 @@ const Header = () => {
 
                 <DropdownMenuSeparator />
 
-                <DropdownMenuItem
-                  onClick={() =>
-                    changeTheme(
-                      user.themePreference === "dark" ? "light" : "dark"
-                    )
-                  }
-                >
-                  {user.themePreference === "dark" ? (
-                    <Sun className="w-4 h-4 mr-2" />
-                  ) : (
-                    <Moon className="w-4 h-4 mr-2" />
+                <DropdownMenuItem onClick={() => changeTheme("auto")}>
+                  <Monitor className="w-4 h-4 mr-2" />
+                  Automatic
+                  {(!user.themeMode || user.themeMode === "auto") && (
+                    <span className="ml-auto">✓</span>
                   )}
-                  Switch to {user.themePreference === "dark" ? "Light" : "Dark"} mode
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => changeTheme("light")}>
+                  <Sun className="w-4 h-4 mr-2" />
+                  Light mode
+                  {user.themeMode === "light" && (
+                    <span className="ml-auto">✓</span>
+                  )}
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => changeTheme("dark")}>
+                  <Moon className="w-4 h-4 mr-2" />
+                  Dark mode
+                  {user.themeMode === "dark" && (
+                    <span className="ml-auto">✓</span>
+                  )}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />

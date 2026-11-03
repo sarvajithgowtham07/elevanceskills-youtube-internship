@@ -7,18 +7,31 @@ const userschema = mongoose.Schema({
   channelImage: { type: String, default: "" },
   description: { type: String },
   image: { type: String },
-    location: {
+  phone: {
+    type: String,
+    default: ""
+  },
+  phoneVerified: {
+    type: Boolean,
+    default: false
+  },
+  location: {
     type: String,
     trim: true,
     maxlength: 100,
-    default: "",
+    default: ""
+  },
+  themeMode: {
+    type: String,
+    enum: ["auto", "light", "dark"],
+    default: "auto"
   },
   themePreference: {
     type: String,
     enum: ["light", "dark"],
-    default: "dark",
+    default: "dark"
   },
-  joinedon: { type: Date, default: Date.now },
+  joinedon: { type: Date, default: Date.now }
 });
 
 export default mongoose.model("user", userschema);

@@ -56,7 +56,7 @@ const getClientIp = (req) => {
   );
 };
 
-const getDeviceInfo = (userAgent = "") => {
+const getDeviceInfo = (userAgent = "", browserName = "") => {
   let browser = "Unknown";
   let browserVersion = "Unknown";
   let operatingSystem = "Unknown";
@@ -66,15 +66,24 @@ const getDeviceInfo = (userAgent = "") => {
   if (/Edg\/([\d.]+)/i.test(userAgent)) {
     browser = "Edge";
     browserVersion = userAgent.match(/Edg\/([\d.]+)/i)?.[1] || "Unknown";
-  } else if (/Chrome\/([\d.]+)/i.test(userAgent)) {
-    browser = "Chrome";
-    browserVersion = userAgent.match(/Chrome\/([\d.]+)/i)?.[1] || "Unknown";
+  } else if (/OPR\/([\d.]+)/i.test(userAgent)) {
+    browser = "Opera";
+    browserVersion = userAgent.match(/OPR\/([\d.]+)/i)?.[1] || "Unknown";
   } else if (/Firefox\/([\d.]+)/i.test(userAgent)) {
     browser = "Firefox";
     browserVersion = userAgent.match(/Firefox\/([\d.]+)/i)?.[1] || "Unknown";
-  } else if (/Safari\/([\d.]+)/i.test(userAgent)) {
+  } else if (/Chrome\/([\d.]+)/i.test(userAgent)) {
+    browser = "Chrome";
+    browserVersion = userAgent.match(/Chrome\/([\d.]+)/i)?.[1] || "Unknown";
+  } else if (/Version\/([\d.]+).*Safari/i.test(userAgent)) {
     browser = "Safari";
     browserVersion = userAgent.match(/Version\/([\d.]+)/i)?.[1] || "Unknown";
+  }
+
+  if (browserName === "Brave" && browser === "Chrome") {
+    browser = "Brave";
+  } else if (browserName && browserName !== "Unknown" && browser === "Unknown") {
+    browser = browserName;
   }
 
   if (/Android/i.test(userAgent)) {
@@ -117,24 +126,31 @@ const getDeviceInfo = (userAgent = "") => {
 };
 
 const getLocationFromIp = async (ipAddress) => {
+  const unknownLocation = {
+    city: "Unknown",
+    state: "Unknown",
+    country: "Unknown",
+    latitude: null,
+    longitude: null,
+  };
+
+  if (!ipAddress || ipAddress === "Unknown") {
+    return unknownLocation;
+  }
+
+  const normalizedIp = ipAddress.replace(/^::ffff:/, "");
+
   if (
-    !ipAddress ||
-    ipAddress === "Unknown" ||
-    ipAddress === "::1" ||
-    ipAddress === "127.0.0.1"
+    normalizedIp === "::1" ||
+    normalizedIp === "127.0.0.1" ||
+    normalizedIp.startsWith("127.")
   ) {
-    return {
-      city: "Unknown",
-      state: "Unknown",
-      country: "Unknown",
-      latitude: null,
-      longitude: null,
-    };
+    return unknownLocation;
   }
 
   try {
     const response = await fetch(
-      `https://ipwho.is/${encodeURIComponent(ipAddress)}`
+      `https://ipwho.is/${encodeURIComponent(normalizedIp)}`
     );
 
     if (!response.ok) {
@@ -144,32 +160,19 @@ const getLocationFromIp = async (ipAddress) => {
     const data = await response.json();
 
     if (!data.success) {
-      return {
-        city: "Unknown",
-        state: "Unknown",
-        country: "Unknown",
-        latitude: null,
-        longitude: null,
-      };
+      return unknownLocation;
     }
 
     return {
       city: data.city || "Unknown",
       state: data.region || "Unknown",
       country: data.country || "Unknown",
-      latitude: data.latitude ?? null,
-      longitude: data.longitude ?? null,
+      latitude: Number.isFinite(data.latitude) ? data.latitude : null,
+      longitude: Number.isFinite(data.longitude) ? data.longitude : null,
     };
   } catch (error) {
-    console.error("Location lookup error:", error);
-
-    return {
-      city: "Unknown",
-      state: "Unknown",
-      country: "Unknown",
-      latitude: null,
-      longitude: null,
-    };
+    console.error("Location lookup error:", error.message);
+    return unknownLocation;
   }
 };
 
@@ -230,7 +233,7 @@ const sendOTPForLogin = async (user, loginInfo) => {
 
 
 export const login = async (req, res) => {
-  const { firebaseToken } = req.body;
+  const { firebaseToken, browserName } = req.body;
 
   try {
     if (!firebaseToken) {
@@ -266,18 +269,31 @@ export const login = async (req, res) => {
         email,
         name,
         image,
+        themeMode: "auto",
         themePreference: getDefaultTheme(),
       });
     } else {
       user = existingUser;
+
+      if (!user.themeMode) {
+        user.themeMode = "auto";
+      }
+
+      if (user.themeMode === "auto") {
+        user.themePreference = getDefaultTheme();
+      } else {
+        user.themePreference = user.themeMode;
+      }
+
       if (image && user.image !== image) {
         user.image = image;
-        await user.save();
       }
+
+      await user.save();
     }
 
     const userAgent = req.headers["user-agent"] || "";
-    const deviceInfo = getDeviceInfo(userAgent);
+    const deviceInfo = getDeviceInfo(userAgent, browserName);
     const ipAddress = getClientIp(req);
     const location = await getLocationFromIp(ipAddress);
     const deviceId = createDeviceId(user._id, deviceInfo, ipAddress);
@@ -335,7 +351,7 @@ export const login = async (req, res) => {
 
 
 export const verifyLoginOTP = async (req, res) => {
-  const { userId, otp, trustDevice, loginActivityId, firebaseToken } = req.body;
+  const { userId, otp, trustDevice, loginActivityId, firebaseToken, browserName } = req.body;
 
   if (!firebaseToken) {
     return res.status(401).json({ message: "Firebase token required" });
@@ -358,70 +374,22 @@ export const verifyLoginOTP = async (req, res) => {
   }
 
   if (!mongoose.Types.ObjectId.isValid(userId)) {
-    return res.status(400).json({
-      message: "Invalid user",
-    });
+    return res.status(400).json({ message: "Invalid user" });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(loginActivityId)) {
+    return res.status(400).json({ message: "Invalid login attempt" });
   }
 
   if (!/^\d{6}$/.test(otp || "")) {
-    return res.status(400).json({
-      message: "Enter a valid 6-digit OTP",
-    });
+    return res.status(400).json({ message: "Enter a valid 6-digit OTP" });
   }
 
   try {
-    if (!mongoose.Types.ObjectId.isValid(loginActivityId)) {
-      return res.status(400).json({
-        message: "Invalid login attempt",
-      });
-    }
-
-    const otpRecord = await OTP.findOne({
-      userId,
-      loginActivityId,
-      purpose: "LOGIN_VERIFICATION",
-      verified: false,
-    }).sort({ createdAt: -1 });
-
-    if (!otpRecord) {
-      return res.status(400).json({
-        message: "No active OTP found",
-      });
-    }
-
-    if (otpRecord.expiresAt < new Date()) {
-      return res.status(400).json({
-        message: "OTP has expired",
-      });
-    }
-
-    if (otpRecord.attempts >= 5) {
-      return res.status(429).json({
-        message: "Too many OTP attempts",
-      });
-    }
-
-    const submittedHash = hashOTP(otp);
-
-    if (submittedHash !== otpRecord.otpHash) {
-      otpRecord.attempts += 1;
-      await otpRecord.save();
-
-      return res.status(400).json({
-        message: "Incorrect OTP",
-        attemptsRemaining: Math.max(0, 5 - otpRecord.attempts),
-      });
-    }
-
-    otpRecord.verified = true;
-    await otpRecord.save();
-
     const user = await users.findById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      return res.status(404).json({ message: "User not found" });
     }
 
     if (user.email.toLowerCase() !== decodedToken.email.toLowerCase()) {
@@ -430,9 +398,96 @@ export const verifyLoginOTP = async (req, res) => {
       });
     }
 
-    if (trustDevice) {
+    const loginActivity = await LoginActivity.findOne({
+      _id: loginActivityId,
+      userId,
+      loginStatus: "OTP_REQUIRED",
+    });
+
+    if (!loginActivity) {
+      return res.status(400).json({
+        message: "Login attempt not found or already processed",
+      });
+    }
+
+    const otpRecord = await OTP.findOne({
+      userId,
+      loginActivityId,
+      purpose: "LOGIN_VERIFICATION",
+      verified: false,
+      expiresAt: { $gt: new Date() },
+      attempts: { $lt: 5 },
+    }).sort({ createdAt: -1 });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        message: "No active OTP found or OTP has expired",
+      });
+    }
+
+    const submittedHash = hashOTP(otp);
+
+    if (submittedHash !== otpRecord.otpHash) {
+      const updatedOTP = await OTP.findOneAndUpdate(
+        {
+          _id: otpRecord._id,
+          verified: false,
+          attempts: { $lt: 5 },
+          expiresAt: { $gt: new Date() },
+        },
+        {
+          $inc: { attempts: 1 },
+        },
+        { new: true }
+      );
+
+      if (!updatedOTP) {
+        return res.status(429).json({
+          message: "Too many OTP attempts or OTP expired",
+        });
+      }
+
+      await LoginActivity.findOneAndUpdate(
+        {
+          _id: loginActivityId,
+          userId,
+        },
+        {
+          $inc: { otpAttempts: 1 },
+        }
+      );
+
+      return res.status(400).json({
+        message: "Incorrect OTP",
+        attemptsRemaining: Math.max(0, 5 - updatedOTP.attempts),
+      });
+    }
+
+    const verifiedOTP = await OTP.findOneAndUpdate(
+      {
+        _id: otpRecord._id,
+        userId,
+        loginActivityId,
+        purpose: "LOGIN_VERIFICATION",
+        verified: false,
+        attempts: { $lt: 5 },
+        expiresAt: { $gt: new Date() },
+      },
+      {
+        $set: { verified: true },
+      },
+      { new: true }
+    );
+
+    if (!verifiedOTP) {
+      return res.status(400).json({
+        message: "OTP has expired or has already been used",
+      });
+    }
+
+    if (trustDevice === true) {
       const userAgent = req.headers["user-agent"] || "";
-      const deviceInfo = getDeviceInfo(userAgent);
+      const deviceInfo = getDeviceInfo(userAgent, browserName);
       const ipAddress = getClientIp(req);
       const deviceId = createDeviceId(userId, deviceInfo, ipAddress);
 
@@ -465,12 +520,13 @@ export const verifyLoginOTP = async (req, res) => {
         _id: loginActivityId,
         userId,
         loginStatus: "OTP_REQUIRED",
+        otpVerified: false,
       },
       {
         $set: {
           loginStatus: "OTP_VERIFIED",
           otpVerified: true,
-          isTrusted: !!trustDevice,
+          isTrusted: trustDevice === true,
         },
       },
       { new: true }
@@ -492,6 +548,163 @@ export const verifyLoginOTP = async (req, res) => {
 
     return res.status(500).json({
       message: "Something went wrong",
+    });
+  }
+};
+
+export const resendLoginOTP = async (req, res) => {
+  const { userId, loginActivityId, firebaseToken } = req.body;
+
+  if (!firebaseToken) {
+    return res.status(401).json({ message: "Firebase token required" });
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(userId) ||
+    !mongoose.Types.ObjectId.isValid(loginActivityId)
+  ) {
+    return res.status(400).json({ message: "Invalid login request" });
+  }
+
+  let decodedToken;
+
+  try {
+    decodedToken = await admin.auth().verifyIdToken(firebaseToken);
+  } catch {
+    return res.status(401).json({ message: "Invalid Firebase token" });
+  }
+
+  if (
+    decodedToken.aud !== process.env.FIREBASE_PROJECT_ID ||
+    !decodedToken.email ||
+    decodedToken.email_verified !== true
+  ) {
+    return res.status(401).json({ message: "Verified Firebase account required" });
+  }
+
+  try {
+    const user = await users.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.email.toLowerCase() !== decodedToken.email.toLowerCase()) {
+      return res.status(403).json({
+        message: "Firebase account does not match this login",
+      });
+    }
+
+    const loginActivity = await LoginActivity.findOne({
+      _id: loginActivityId,
+      userId,
+      loginStatus: "OTP_REQUIRED",
+      otpVerified: false,
+    });
+
+    if (!loginActivity) {
+      return res.status(400).json({
+        message: "Login attempt not found or already processed",
+      });
+    }
+
+    const otpRecord = await OTP.findOne({
+      userId,
+      loginActivityId,
+      purpose: "LOGIN_VERIFICATION",
+      verified: false,
+    }).sort({ createdAt: -1 });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        message: "No pending OTP found",
+      });
+    }
+
+    const now = new Date();
+    const cooldown = 60 * 1000;
+    const maxResends = 3;
+    const lastSentAt = otpRecord.lastSentAt || otpRecord.createdAt;
+    const elapsed = now.getTime() - new Date(lastSentAt).getTime();
+
+    if ((otpRecord.resendCount || 0) >= maxResends) {
+      return res.status(429).json({
+        message: "Maximum OTP resend limit reached. Please restart login.",
+        resendsRemaining: 0,
+      });
+    }
+
+    if (elapsed < cooldown) {
+      return res.status(429).json({
+        message: "Please wait before requesting another OTP",
+        cooldownSeconds: Math.ceil((cooldown - elapsed) / 1000),
+        resendsRemaining: maxResends - (otpRecord.resendCount || 0),
+      });
+    }
+
+    const otp = generateOTP();
+    const otpHash = hashOTP(otp);
+    const cutoff = new Date(now.getTime() - cooldown);
+
+    const updatedOTP = await OTP.findOneAndUpdate(
+      {
+        _id: otpRecord._id,
+        userId,
+        loginActivityId,
+        purpose: "LOGIN_VERIFICATION",
+        verified: false,
+        $and: [
+          {
+            $or: [
+              { resendCount: { $lt: maxResends } },
+              { resendCount: { $exists: false } },
+            ],
+          },
+          {
+            $or: [
+              { lastSentAt: { $lte: cutoff } },
+              {
+                lastSentAt: { $exists: false },
+                createdAt: { $lte: cutoff },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        $set: {
+          otpHash,
+          attempts: 0,
+          verified: false,
+          expiresAt: new Date(now.getTime() + 10 * 60 * 1000),
+          lastSentAt: now,
+        },
+        $inc: {
+          resendCount: 1,
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedOTP) {
+      return res.status(429).json({
+        message: "Please wait before requesting another OTP",
+      });
+    }
+
+    await sendOTPEmail(user.email, otp);
+
+    return res.status(200).json({
+      message: "A new OTP has been sent to your registered email",
+      resendsRemaining: Math.max(0, maxResends - updatedOTP.resendCount),
+      cooldownSeconds: 60,
+      expiresInSeconds: 600,
+    });
+  } catch (error) {
+    console.error("Resend OTP error:", error);
+
+    return res.status(500).json({
+      message: "Unable to resend OTP. Please try again.",
     });
   }
 };
@@ -537,7 +750,7 @@ export const updateprofile = async (req, res) => {
 
 export const updatetheme = async (req, res) => {
   const { id: _id } = req.params;
-  const { themePreference } = req.body;
+  const { themeMode } = req.body;
 
   if (req.user.id !== _id) {
     return res.status(403).json({
@@ -551,17 +764,21 @@ export const updatetheme = async (req, res) => {
     });
   }
 
-  if (!["light", "dark"].includes(themePreference)) {
+  if (!["auto", "light", "dark"].includes(themeMode)) {
     return res.status(400).json({
-      message: "Invalid theme preference",
+      message: "Invalid theme mode",
     });
   }
 
   try {
+    const themePreference =
+      themeMode === "auto" ? getDefaultTheme() : themeMode;
+
     const updatedUser = await users.findByIdAndUpdate(
       _id,
       {
         $set: {
+          themeMode,
           themePreference,
         },
       },
@@ -711,6 +928,81 @@ export const searchUsers = async (req, res) => {
 
     return res.status(500).json({
       message: "Something went wrong",
+    });
+  }
+};
+
+export const syncVerifiedPhone = async (req, res) => {
+  const { firebaseToken } = req.body;
+
+  if (!firebaseToken) {
+    return res.status(401).json({
+      message: "Firebase token required"
+    });
+  }
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(firebaseToken, true);
+
+    if (
+      decodedToken.aud !== process.env.FIREBASE_PROJECT_ID ||
+      !decodedToken.email ||
+      decodedToken.email_verified !== true
+    ) {
+      return res.status(401).json({
+        message: "Verified Firebase account required"
+      });
+    }
+
+    const firebaseUser = await admin.auth().getUser(decodedToken.uid);
+    const phone = firebaseUser.phoneNumber;
+
+    if (!phone) {
+      return res.status(400).json({
+        message: "No verified phone number linked to this Firebase account"
+      });
+    }
+
+    const user = await users.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    if (user.email.toLowerCase() !== decodedToken.email.toLowerCase()) {
+      return res.status(403).json({
+        message: "Firebase account does not match this account"
+      });
+    }
+
+    const existingPhone = await users.findOne({
+      phone,
+      _id: { $ne: user._id }
+    });
+
+    if (existingPhone) {
+      return res.status(409).json({
+        message: "This mobile number is already linked to another account"
+      });
+    }
+
+    user.phone = phone;
+    user.phoneVerified = true;
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "Mobile number verified and linked successfully",
+      phone: user.phone,
+      phoneVerified: user.phoneVerified
+    });
+  } catch (error) {
+    console.error("Phone synchronization error:", error);
+
+    return res.status(500).json({
+      message: "Unable to synchronize mobile number"
     });
   }
 };

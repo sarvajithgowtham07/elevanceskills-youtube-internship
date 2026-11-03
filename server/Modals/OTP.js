@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const otpSchema = mongoose.Schema({
@@ -28,6 +27,14 @@ const otpSchema = mongoose.Schema({
   attempts: {
     type: Number,
     default: 0,
+  },
+  resendCount: {
+    type: Number,
+    default: 0,
+  },
+  lastSentAt: {
+    type: Date,
+    default: Date.now,
   },
   verified: {
     type: Boolean,
