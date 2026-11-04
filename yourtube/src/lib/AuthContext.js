@@ -105,7 +105,7 @@ export const UserProvider = ({ children }) => {
     if (navigator.brave?.isBrave) {
       try {
         if (await navigator.brave.isBrave()) return "Brave";
-      } catch {}
+      } catch { }
     }
 
     const ua = navigator.userAgent;
@@ -175,8 +175,11 @@ export const UserProvider = ({ children }) => {
     }
   };
 
+
   const verifyOTP = async (otp, trustDevice) => {
-    if (!pendingLogin || !auth.currentUser) return false;
+    if (!pendingLogin || !auth.currentUser) {
+      return { success: false, message: "Login session not found" };
+    }
 
     try {
       const firebaseToken = await auth.currentUser.getIdToken();
@@ -193,15 +196,31 @@ export const UserProvider = ({ children }) => {
 
       if (response.data.result && response.data.token) {
         login(response.data.result, response.data.token);
-        return true;
+        return { success: true };
       }
 
-      return false;
+      return {
+        success: false,
+        message: response.data.message || "OTP verification failed"
+      };
     } catch (error) {
+      if (error.response) {
+        return {
+          success: false,
+          message: error.response.data?.message || "OTP verification failed",
+          attemptsRemaining: error.response.data?.attemptsRemaining
+        };
+      }
+
       console.error("OTP verification error:", error);
-      throw error;
+
+      return {
+        success: false,
+        message: "Unable to connect to the server. Please try again."
+      };
     }
   };
+
 
   const resendOTP = async () => {
     if (!pendingLogin || !auth.currentUser) {

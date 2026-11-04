@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -22,6 +23,7 @@ export default function OTPVerification() {
   const [resendsRemaining, setResendsRemaining] = useState(3);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [verificationMethod, setVerificationMethod] = useState("email");
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -37,6 +39,7 @@ export default function OTPVerification() {
     return null;
   }
 
+
   const handleVerify = async () => {
     if (otp.length !== 6) {
       setError("Enter the 6-digit OTP");
@@ -50,19 +53,37 @@ export default function OTPVerification() {
     try {
       const result = await verifyOTP(otp, trustDevice);
 
-      if (!result) {
-        setError("OTP verification failed");
+      if (!result.success) {
+        if (result.message === "Incorrect OTP") {
+          setError(
+            typeof result.attemptsRemaining === "number"
+              ? `Incorrect OTP. ${result.attemptsRemaining} attempt(s) remaining.`
+              : "Incorrect OTP. Please try again."
+          );
+        } else if (
+          result.message === "Too many OTP attempts or OTP expired"
+        ) {
+          setError("OTP expired or maximum attempts reached. Please request a new OTP.");
+        } else {
+          setError(result.message || "OTP verification failed.");
+        }
+
+        setOtp("");
+        return;
       }
-    } catch (error: any) {
-      setError(
-        error?.response?.data?.message || "OTP verification failed"
-      );
+
+      setOtp("");
+    } catch (error) {
+      setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+
   const handleResend = async () => {
+    if (verificationMethod !== "email") return;
+
     setResendLoading(true);
     setError("");
     setSuccess("");
@@ -98,45 +119,72 @@ export default function OTPVerification() {
           Verify Your Login
         </h2>
 
-        <p className="text-sm text-muted-foreground mb-6">
-          We detected a new login environment. Enter the verification code
-          sent to:
+        <p className="text-sm text-muted-foreground mb-5">
+          We detected a new login environment. Choose a verification method.
         </p>
 
-        <p className="font-medium mb-4">
-          {pendingLogin.email}
-        </p>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <Button
+            type="button"
+            variant={verificationMethod === "email" ? "default" : "outline"}
+            onClick={() => {
+              setVerificationMethod("email");
+              setOtp("");
+              setError("");
+              setSuccess("");
+            }}
+          >
+            Email OTP
+          </Button>
 
-        <Input
-          value={otp}
-          onChange={(e) => {
-            const value = e.target.value.replace(/\D/g, "").slice(0, 6);
-            setOtp(value);
-            setError("");
-          }}
-          placeholder="Enter 6-digit OTP"
-          inputMode="numeric"
-          maxLength={6}
-          className="text-center text-lg tracking-[0.5em]"
-        />
+          <Button type="button" variant="outline" disabled>
+            Mobile OTP
+          </Button>
+        </div>
 
-        <label className="flex items-center gap-2 mt-4 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={trustDevice}
-            onChange={(e) => setTrustDevice(e.target.checked)}
-          />
-          Trust this device for 30 days
-        </label>
+        {verificationMethod === "email" && (
+          <>
+            <p className="text-sm text-muted-foreground mb-2">
+              Enter the verification code sent to:
+            </p>
+
+            <p className="font-medium mb-4">
+              {pendingLogin.email}
+            </p>
+
+            <Input
+              value={otp}
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setOtp(value);
+                setError("");
+                setSuccess("");
+              }}
+              placeholder="Enter 6-digit OTP"
+              inputMode="numeric"
+              maxLength={6}
+              className="text-center text-lg tracking-[0.5em]"
+            />
+
+            <label className="flex items-center gap-2 mt-4 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={trustDevice}
+                onChange={(e) => setTrustDevice(e.target.checked)}
+              />
+              Trust this device for 30 days
+            </label>
+          </>
+        )}
 
         {error && (
-          <p className="text-sm text-red-500 mt-3">
+          <p className="text-sm text-red-500 mt-3" role="alert">
             {error}
           </p>
         )}
 
         {success && (
-          <p className="text-sm text-green-600 mt-3">
+          <p className="text-sm text-green-600 mt-3" role="status">
             {success}
           </p>
         )}

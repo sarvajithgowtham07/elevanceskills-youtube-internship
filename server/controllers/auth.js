@@ -451,9 +451,13 @@ export const verifyLoginOTP = async (req, res) => {
         {
           _id: loginActivityId,
           userId,
+          loginStatus: "OTP_REQUIRED",
         },
         {
           $inc: { otpAttempts: 1 },
+          ...(updatedOTP.attempts >= 5
+            ? { $set: { loginStatus: "FAILED" } }
+            : {}),
         }
       );
 
@@ -506,7 +510,7 @@ export const verifyLoginOTP = async (req, res) => {
           deviceType: deviceInfo.deviceType,
           deviceModel: deviceInfo.deviceModel,
           trustedAt: new Date(),
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          expiresAt: new Date(Date.now() + (Number(user.trustedDeviceDuration) || 30) * 24 * 60 * 60 * 1000),
         },
         {
           upsert: true,
@@ -858,6 +862,60 @@ export const getTrustedDevices = async (req, res) => {
   }
 };
 
+export const updateTrustedDeviceDuration = async (req, res) => {
+  const { id } = req.params;
+  const { duration } = req.body;
+  const allowedDurations = [7, 15, 30, 60, 90];
+
+  if (req.user.id !== id) {
+    return res.status(403).json({
+      message: "You are not authorized to access this account",
+    });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      message: "Invalid user",
+    });
+  }
+
+  if (!allowedDurations.includes(Number(duration))) {
+    return res.status(400).json({
+      message: "Invalid trusted-device duration",
+    });
+  }
+
+  try {
+    const updatedUser = await users.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          trustedDeviceDuration: Number(duration),
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select("_id trustedDeviceDuration");
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Trusted-device duration updated successfully",
+      trustedDeviceDuration: updatedUser.trustedDeviceDuration,
+    });
+  } catch (error) {
+    console.error("Trusted-device duration update error:", error);
+    return res.status(500).json({
+      message: "Unable to update trusted-device duration",
+    });
+  }
+};
 
 export const revokeTrustedDevice = async (req, res) => {
   const { userId, deviceId } = req.params;

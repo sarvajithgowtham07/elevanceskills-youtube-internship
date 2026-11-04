@@ -1,3 +1,4 @@
+
 import mongoose from "mongoose";
 
 const userschema = mongoose.Schema({
@@ -30,6 +31,11 @@ const userschema = mongoose.Schema({
     type: String,
     enum: ["light", "dark"],
     default: "dark"
+  },
+  trustedDeviceDuration: {
+    type: Number,
+    enum: [7, 15, 30, 60, 90],
+    default: 30
   },
   joinedon: { type: Date, default: Date.now }
 });

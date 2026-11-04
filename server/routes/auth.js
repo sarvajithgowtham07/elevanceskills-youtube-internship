@@ -1,3 +1,4 @@
+
 import express from "express";
 import {
   login,
@@ -9,7 +10,8 @@ import {
   getTrustedDevices,
   revokeTrustedDevice,
   searchUsers,
-  syncVerifiedPhone
+  syncVerifiedPhone,
+  updateTrustedDeviceDuration
 } from "../controllers/auth.js";
 import verifyToken from "../middleware/authMiddleware.js";
 
@@ -23,6 +25,8 @@ routes.post("/phone/sync", verifyToken, syncVerifiedPhone);
 
 routes.patch("/update/:id", verifyToken, updateprofile);
 routes.patch("/theme/:id", verifyToken, updatetheme);
+routes.patch("/trusted-device-duration/:id", verifyToken, updateTrustedDeviceDuration);
+
 routes.get("/login-history/:id", verifyToken, getLoginHistory);
 routes.get("/trusted-devices/:id", verifyToken, getTrustedDevices);
 routes.delete(

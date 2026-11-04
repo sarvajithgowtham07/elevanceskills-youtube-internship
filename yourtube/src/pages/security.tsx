@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useUser } from "@/lib/AuthContext";
 import axiosInstance from "@/lib/axiosinstance";
@@ -32,8 +33,15 @@ const SecurityPage = () => {
   const [loading, setLoading] = useState(true);
   const [revokingDevice, setRevokingDevice] = useState<string | null>(null);
 
+  const [trustedDeviceDuration, setTrustedDeviceDuration] = useState(30);
+  const [savingDuration, setSavingDuration] = useState(false);
+  const [durationMessage, setDurationMessage] = useState("");
+  const [durationError, setDurationError] = useState("");
+
   useEffect(() => {
     if (!user?._id) return;
+
+    setTrustedDeviceDuration(user.trustedDeviceDuration || 30);
 
     const loadSecurityData = async () => {
       try {
@@ -54,6 +62,30 @@ const SecurityPage = () => {
     loadSecurityData();
   }, [user]);
 
+  const handleSaveDuration = async () => {
+    if (!user?._id) return;
+
+    setSavingDuration(true);
+    setDurationMessage("");
+    setDurationError("");
+
+    try {
+      const response = await axiosInstance.patch(
+        `/user/trusted-device-duration/${user._id}`,
+        { duration: Number(trustedDeviceDuration) }
+      );
+
+      setTrustedDeviceDuration(response.data.trustedDeviceDuration);
+      setDurationMessage("Trusted-device duration updated successfully.");
+    } catch (error: any) {
+      setDurationError(
+        error.response?.data?.message || "Unable to update duration."
+      );
+    } finally {
+      setSavingDuration(false);
+    }
+  };
+
   const revokeDevice = async (deviceId: string) => {
     if (!user?._id) return;
 
@@ -64,7 +96,9 @@ const SecurityPage = () => {
         `/user/trusted-devices/${user._id}/${deviceId}`
       );
 
-      setTrustedDevices((devices) => devices.filter((device) => device._id !== deviceId));
+      setTrustedDevices((devices) =>
+        devices.filter((device) => device._id !== deviceId)
+      );
     } catch (error) {
       console.error("Revoke device error:", error);
     } finally {
@@ -116,6 +150,38 @@ const SecurityPage = () => {
       dateStyle: "medium",
       timeStyle: "short",
     });
+  };
+
+  const formatIpAddress = (ip: string) => {
+    const normalizedIp = ip?.replace(/^::ffff:/, "");
+
+    if (
+      normalizedIp === "::1" ||
+      normalizedIp === "127.0.0.1" ||
+      normalizedIp?.startsWith("127.")
+    ) {
+      return "Localhost";
+    }
+
+    return ip || "Unknown";
+  };
+
+  const formatLocation = (login: any) => {
+    const ip = login.ipAddress?.replace(/^::ffff:/, "");
+
+    if (
+      ip === "::1" ||
+      ip === "127.0.0.1" ||
+      ip?.startsWith("127.")
+    ) {
+      return "Local development environment";
+    }
+
+    const location = [login.city, login.state, login.country]
+      .filter((value) => value && value !== "Unknown")
+      .join(", ");
+
+    return location || "Location unavailable";
   };
 
   if (!user) {
@@ -246,6 +312,65 @@ const SecurityPage = () => {
         </section>
 
         <section className="border rounded-xl p-6">
+          <div>
+            <label className="block text-sm font-medium mb-3">
+              Choose trusted-device duration
+            </label>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {[7, 15, 30, 60, 90].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => {
+                    setTrustedDeviceDuration(days);
+                    setDurationMessage("");
+                    setDurationError("");
+                  }}
+                  disabled={savingDuration}
+                  aria-pressed={trustedDeviceDuration === days}
+                  className={`relative flex flex-col items-center justify-center gap-1 rounded-xl border p-4 transition-all duration-200 ${
+                    trustedDeviceDuration === days
+                      ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20"
+                      : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
+                  } disabled:opacity-50`}
+                >
+                  {trustedDeviceDuration === days && (
+                    <CheckCircle className="w-5 h-5" />
+                  )}
+
+                  <span className="text-2xl font-bold">{days}</span>
+                  <span className="text-xs font-medium">Days</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4 mt-5">
+            <p className="text-xs text-muted-foreground">
+              This setting applies to devices you trust in future OTP verifications. Existing trusted devices keep their current expiry dates.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleSaveDuration}
+              disabled={savingDuration}
+              className="px-5 py-2.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
+            >
+              {savingDuration ? "Saving..." : "Save Duration"}
+            </button>
+
+            {durationMessage && (
+              <p className="text-sm text-green-600">{durationMessage}</p>
+            )}
+
+            {durationError && (
+              <p className="text-sm text-red-500">{durationError}</p>
+            )}
+          </div>
+        </section>
+
+        <section className="border rounded-xl p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="text-xl font-semibold">
@@ -306,7 +431,7 @@ const SecurityPage = () => {
                       <div className="flex flex-wrap gap-4 mt-3 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Globe className="w-3 h-3" />
-                          {device.ipAddress}
+                          {formatIpAddress(device.ipAddress)}
                         </span>
 
                         <span className="flex items-center gap-1">
@@ -387,13 +512,14 @@ const SecurityPage = () => {
                         </div>
 
                         <span
-                          className={`text-xs font-medium px-2 py-1 rounded-full ${login.loginStatus === "SUCCESS" ||
-                              login.loginStatus === "OTP_VERIFIED"
+                          className={`text-xs font-medium px-2 py-1 rounded-full ${
+                            login.loginStatus === "SUCCESS" ||
+                            login.loginStatus === "OTP_VERIFIED"
                               ? "bg-green-100 text-green-700"
                               : login.loginStatus === "OTP_REQUIRED"
                                 ? "bg-yellow-100 text-yellow-700"
                                 : "bg-red-100 text-red-700"
-                            }`}
+                          }`}
                         >
                           {login.loginStatus}
                         </span>
@@ -402,13 +528,12 @@ const SecurityPage = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Globe className="w-3 h-3" />
-                          IP: {login.ipAddress}
+                          IP: {formatIpAddress(login.ipAddress)}
                         </span>
 
                         <span className="flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
-                          {login.city}, {login.state},{" "}
-                          {login.country}
+                          {formatLocation(login)}
                         </span>
 
                         <span className="flex items-center gap-1">
