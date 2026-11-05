@@ -20,7 +20,9 @@ export default function VideoCard({ video }: any) {
     : undefined;
 
   const videoUrl = video?.filepath
-    ? `${BACKEND_URL}/${video.filepath.replace(/\\/g, "/")}`
+    ? video.filepath.startsWith("http")
+      ? video.filepath
+      : `${BACKEND_URL}/${video.filepath.replace(/\\/g, "/").replace(/^\/+/, "")}`
     : undefined;
 
   return (
@@ -55,13 +57,11 @@ export default function VideoCard({ video }: any) {
           </Avatar>
 
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-sm line-clamp-2 group-hover:text-blue-600">
+            <h3 className="font-medium text-sm text-white line-clamp-2 group-hover:text-white">
               {video?.videotitle || "Untitled video"}
             </h3>
-
-            <p className="text-sm text-gray-600 mt-1">{channelName}</p>
-
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-400 mt-1">{channelName}</p>
+            <p className="text-sm text-gray-400">
               {(video?.views || 0).toLocaleString()} views •{" "}
               {video?.createdAt
                 ? `${formatDistanceToNow(new Date(video.createdAt))} ago`
