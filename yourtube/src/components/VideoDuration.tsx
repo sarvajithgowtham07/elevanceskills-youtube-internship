@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -15,10 +16,19 @@ export default function VideoDuration({ filepath }: { filepath: string }) {
   const [duration, setDuration] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!filepath) return;
+
     const el = document.createElement("video");
     el.preload = "metadata";
-    el.src = `${process.env.NEXT_PUBLIC_BACKEND_URL}/${filepath}`;
-    el.onloadedmetadata = () => setDuration(el.duration);
+    el.src = filepath.startsWith("http")
+      ? filepath
+      : `${process.env.NEXT_PUBLIC_BACKEND_URL}/${filepath.replace(/^\/+/, "")}`;
+
+    el.onloadedmetadata = () => {
+      if (Number.isFinite(el.duration)) {
+        setDuration(el.duration);
+      }
+    };
 
     return () => {
       el.onloadedmetadata = null;

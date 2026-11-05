@@ -289,18 +289,21 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
         }}
       >
         <source
-          src={`${process.env.NEXT_PUBLIC_BACKEND_URL}/${video?.filepath}`}
+          src={
+            video.filepath.startsWith("http")
+              ? video.filepath
+              : `${process.env.NEXT_PUBLIC_BACKEND_URL}/${video.filepath.replace(/^\/+/, "")}`
+          }
           type="video/mp4"
         />
         Your browser does not support the video tag.
       </video>
 
       <div
-        className={`absolute bottom-0 left-0 right-0 bg-black/90 px-3 py-2 transition-opacity duration-300 ${
-          showControls
+        className={`absolute bottom-0 left-0 right-0 bg-black/90 px-3 py-2 transition-opacity duration-300 ${showControls
             ? "opacity-100"
             : "opacity-0 pointer-events-none"
-        }`}
+          }`}
       >
         <input
           type="range"
