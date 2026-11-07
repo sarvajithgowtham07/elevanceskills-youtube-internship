@@ -9,6 +9,7 @@ import {
 import React, { useState, createContext, useEffect, useContext } from "react";
 import { provider, auth } from "./firebase";
 import axiosInstance from "./axiosinstance";
+import { getBrowserLocation } from "./getBrowserLocation";
 
 const UserContext = createContext();
 let recaptchaVerifier = null;
@@ -122,13 +123,15 @@ export const UserProvider = ({ children }) => {
   const processLogin = async (firebaseuser) => {
     const firebaseToken = await firebaseuser.getIdToken();
     const browserName = await getBrowserName();
+    const clientLocation = await getBrowserLocation();
 
     const payload = {
       email: firebaseuser.email,
       name: firebaseuser.displayName,
       image: firebaseuser.photoURL || "https://github.com/shadcn.png",
       firebaseToken,
-      browserName
+      browserName,
+      clientLocation
     };
 
     const response = await axiosInstance.post("/user/login", payload);

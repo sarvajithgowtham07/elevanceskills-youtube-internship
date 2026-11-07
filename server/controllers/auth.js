@@ -8,6 +8,7 @@ import { sendOTPEmail } from "../utils/sendEmail.js";
 import { generateOTP, hashOTP } from "../utils/otp.js";
 import jwt from "jsonwebtoken";
 import admin from "../utils/firebaseAdmin.js";
+import geoip from "geoip-lite";
 
 const generateAuthToken = (user) => {
   if (!process.env.JWT_SECRET) {
@@ -140,41 +141,55 @@ const getLocationFromIp = async (ipAddress) => {
 
   const normalizedIp = ipAddress.replace(/^::ffff:/, "");
 
-  if (
-    normalizedIp === "::1" ||
-    normalizedIp === "127.0.0.1" ||
-    normalizedIp.startsWith("127.")
-  ) {
+  const data = geoip.lookup(normalizedIp);
+
+  if (!data) {
     return unknownLocation;
   }
+
+  let country = data.country || "Unknown";
 
   try {
-    const response = await fetch(
-      `https://ipwho.is/${encodeURIComponent(normalizedIp)}`
-    );
-
-    if (!response.ok) {
-      console.error("Location status:", response.status, "IP:", normalizedIp);
-      throw new Error("Location service unavailable");
-    }
-
-    const data = await response.json();
-
-    if (!data.success) {
-      return unknownLocation;
-    }
-
-    return {
-      city: data.city || "Unknown",
-      state: data.region || "Unknown",
-      country: data.country || "Unknown",
-      latitude: Number.isFinite(data.latitude) ? data.latitude : null,
-      longitude: Number.isFinite(data.longitude) ? data.longitude : null,
-    };
+    country = new Intl.DisplayNames(["en"], { type: "region" }).of(data.country) || country;
   } catch (error) {
-    console.error("Location lookup error:", error.message);
-    return unknownLocation;
+    country = data.country || "Unknown";
   }
+
+  return {
+    city: data.city || "Unknown",
+    state: data.region || "Unknown",
+    country,
+    latitude: Array.isArray(data.ll) ? data.ll[0] : null,
+    longitude: Array.isArray(data.ll) ? data.ll[1] : null,
+  };
+};
+
+const sanitizeClientLocation = (value) => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const clean = (text) =>
+    typeof text === "string" && text.trim() ? text.trim().slice(0, 80) : null;
+
+  const city = clean(value.city);
+  const state = clean(value.state);
+  const country = clean(value.country);
+
+  if (!city || !state || !country) {
+    return null;
+  }
+
+  const latitude = Number(value.latitude);
+  const longitude = Number(value.longitude);
+
+  return {
+    city,
+    state,
+    country,
+    latitude: Number.isFinite(latitude) ? latitude : null,
+    longitude: Number.isFinite(longitude) ? longitude : null,
+  };
 };
 
 const createDeviceId = (userId, deviceInfo, ipAddress) => {
@@ -234,7 +249,7 @@ const sendOTPForLogin = async (user, loginInfo) => {
 
 
 export const login = async (req, res) => {
-  const { firebaseToken, browserName } = req.body;
+  const { firebaseToken, browserName, clientLocation } = req.body;
 
   try {
     if (!firebaseToken) {
@@ -296,7 +311,8 @@ export const login = async (req, res) => {
     const userAgent = req.headers["user-agent"] || "";
     const deviceInfo = getDeviceInfo(userAgent, browserName);
     const ipAddress = getClientIp(req);
-    const location = await getLocationFromIp(ipAddress);
+    const location =
+      sanitizeClientLocation(clientLocation) || (await getLocationFromIp(ipAddress));
     const deviceId = createDeviceId(user._id, deviceInfo, ipAddress);
 
     const trustedDevice = await TrustedDevice.findOne({
