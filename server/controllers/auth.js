@@ -154,6 +154,7 @@ const getLocationFromIp = async (ipAddress) => {
     );
 
     if (!response.ok) {
+      console.error("Location status:", response.status, "IP:", normalizedIp);
       throw new Error("Location service unavailable");
     }
 

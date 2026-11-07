@@ -1,18 +1,21 @@
-import nodemailer from "nodemailer";
-
 export const sendOTPEmail = async (email, otp) => {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "api-key": process.env.BREVO_API_KEY,
     },
+    body: JSON.stringify({
+      sender: { name: "YourTube Security", email: process.env.EMAIL_USER },
+      to: [{ email }],
+      subject: "YourTube Login Verification Code",
+      textContent: `Your YourTube verification code is ${otp}. This code expires in 10 minutes. If you did not attempt to log in, you can ignore this email.`,
+    }),
   });
 
-  await transporter.sendMail({
-    from: `"YourTube Security" <${process.env.EMAIL_USER}>`,
-    to: email,
-    subject: "YourTube Login Verification Code",
-    text: `Your YourTube verification code is ${otp}. This code expires in 10 minutes. If you did not attempt to log in, you can ignore this email.`,
-  });
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`Brevo email failed: ${response.status} ${details}`);
+  }
 };
