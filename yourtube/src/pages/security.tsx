@@ -97,10 +97,10 @@ const SecurityPage = () => {
       );
 
       setTrustedDevices((devices) =>
-        devices.filter((device) => device._id !== deviceId)
+        devices.filter((device) => device.deviceId !== deviceId)
       );
-    } catch (error) {
-      console.error("Revoke device error:", error);
+    } catch (error: any) {
+      console.error("Revoke device error:", error.response?.data || error);
     } finally {
       setRevokingDevice(null);
     }
@@ -329,11 +329,10 @@ const SecurityPage = () => {
                   }}
                   disabled={savingDuration}
                   aria-pressed={trustedDeviceDuration === days}
-                  className={`relative flex flex-col items-center justify-center gap-1 rounded-xl border p-4 transition-all duration-200 ${
-                    trustedDeviceDuration === days
-                      ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20"
-                      : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
-                  } disabled:opacity-50`}
+                  className={`relative flex flex-col items-center justify-center gap-1 rounded-xl border p-4 transition-all duration-200 ${trustedDeviceDuration === days
+                    ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20"
+                    : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-muted"
+                    } disabled:opacity-50`}
                 >
                   {trustedDeviceDuration === days && (
                     <CheckCircle className="w-5 h-5" />
@@ -448,7 +447,7 @@ const SecurityPage = () => {
 
                     <button
                       type="button"
-                      onClick={() => revokeDevice(device._id)}
+                      onClick={() => revokeDevice(device.deviceId)}
                       disabled={revokingDevice === device._id}
                       className="px-3 py-2 text-sm rounded-md border text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
@@ -512,14 +511,13 @@ const SecurityPage = () => {
                         </div>
 
                         <span
-                          className={`text-xs font-medium px-2 py-1 rounded-full ${
-                            login.loginStatus === "SUCCESS" ||
+                          className={`text-xs font-medium px-2 py-1 rounded-full ${login.loginStatus === "SUCCESS" ||
                             login.loginStatus === "OTP_VERIFIED"
-                              ? "bg-green-100 text-green-700"
-                              : login.loginStatus === "OTP_REQUIRED"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : "bg-red-100 text-red-700"
-                          }`}
+                            ? "bg-green-100 text-green-700"
+                            : login.loginStatus === "OTP_REQUIRED"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : "bg-red-100 text-red-700"
+                            }`}
                         >
                           {login.loginStatus}
                         </span>

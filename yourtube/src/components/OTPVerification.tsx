@@ -152,6 +152,12 @@ export default function OTPVerification() {
               {pendingLogin.email}
             </p>
 
+            <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+              <p className="text-sm font-medium">Check your Spam or Junk folder</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                If you don't see the verification email in your Inbox, please check your Spam or Junk folder. If you find it there, mark it as Not Spam so future OTP emails arrive in your Inbox.
+              </p>
+            </div>
             <Input
               value={otp}
               onChange={(e) => {
