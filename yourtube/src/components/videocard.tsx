@@ -57,7 +57,7 @@ export default function VideoCard({ video }: any) {
           </Avatar>
 
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-sm text-white line-clamp-2">
+            <h3 className="font-medium text-sm text-foreground line-clamp-2">
               {video?.videotitle || "Untitled video"}
             </h3>
             <p className="text-sm text-gray-400 mt-1">{channelName}</p>

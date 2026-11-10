@@ -1,20 +1,39 @@
-
 "use client";
 
 import { useRef, useEffect, useState } from "react";
+import { useRouter } from "next/router";
 
 interface VideoPlayerProps {
   video: {
     _id: string;
     videotitle: string;
     filepath: string;
+    qualities?: { label: string; filepath: string }[];
+    subtitleUrl?: string;
+    subtitleLanguage?: string;
+    subtitleLabel?: string;
   };
+  nextVideo?: {
+    _id: string;
+    videotitle: string;
+    filepath: string;
+  };
+  autoPlay?: boolean;
 }
 
-export default function VideoPlayer({ video }: VideoPlayerProps) {
+export default function VideoPlayer({
+  video,
+  nextVideo,
+  autoPlay = false,
+}: VideoPlayerProps) {
+  const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
 
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [selectedQuality, setSelectedQuality] = useState("Original");
+  const [videoSource, setVideoSource] = useState(video.filepath);
+  const pendingPlaybackRef = useRef<{ time: number; shouldPlay: boolean } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -22,6 +41,51 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [bufferedProgress, setBufferedProgress] = useState(0);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [isTheaterMode, setIsTheaterMode] = useState(false);
+  const [isSubtitlesEnabled, setIsSubtitlesEnabled] = useState(false);
+  const [subtitleText, setSubtitleText] = useState("");
+  const subtitleTrackRef = useRef<HTMLTrackElement>(null);
+  const playerRef = useRef<HTMLDivElement>(null);
+
+  // 1. Timeline Hover Preview refs & state
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const [hoverPreviewTime, setHoverPreviewTime] = useState<number | null>(null);
+  const [hoverPreviewX, setHoverPreviewX] = useState(0);
+
+  // 3. Preview video update effect
+  useEffect(() => {
+    const previewVideo = previewVideoRef.current;
+
+    if (
+      previewVideo &&
+      hoverPreviewTime !== null &&
+      previewVideo.readyState >= 1
+    ) {
+      previewVideo.currentTime = hoverPreviewTime;
+    }
+  }, [hoverPreviewTime]);
+
+  useEffect(() => {
+    if (countdown === null) return;
+
+    if (countdown === 0 && nextVideo) {
+      void router.push({
+        pathname: `/watch/${nextVideo._id}`,
+        query: { autoplay: "1" },
+      });
+      setCountdown(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setCountdown((prev) => (prev === null ? null : prev - 1));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [countdown, nextVideo, router]);
 
   const resetControlsTimer = () => {
     setShowControls(true);
@@ -30,7 +94,7 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
       clearTimeout(hideControlsTimer.current);
     }
 
-    if (isPlaying) {
+    if (videoRef.current && !videoRef.current.paused) {
       hideControlsTimer.current = setTimeout(() => {
         setShowControls(false);
       }, 3000);
@@ -57,9 +121,36 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
     resetControlsTimer();
   };
 
-  const handleSpeedChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
+  const handleVideoEnded = () => {
+    setIsPlaying(false);
+    setIsBuffering(false);
+    setShowControls(true);
+    setProgress(duration);
+
+    if (nextVideo) {
+      setCountdown(10);
+    }
+  };
+
+  const cancelAutoplay = () => {
+    setCountdown(null);
+  };
+
+  const handleSkip = (seconds: number) => {
+    const videoElement = videoRef.current;
+    if (!videoElement || !Number.isFinite(videoElement.duration)) return;
+
+    const newTime = Math.max(
+      0,
+      Math.min(videoElement.duration, videoElement.currentTime + seconds)
+    );
+
+    videoElement.currentTime = newTime;
+    setProgress(newTime);
+    resetControlsTimer();
+  };
+
+  const handleSpeedChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const speed = Number(e.target.value);
     const videoElement = videoRef.current;
 
@@ -103,34 +194,31 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
 
           if (document.fullscreenElement) {
             void document.exitFullscreen();
-          } else {
-            void videoElement.requestFullscreen();
+          } else if (playerRef.current) {
+            void playerRef.current.requestFullscreen().catch((error) => {
+              console.error("Fullscreen error:", error);
+            });
           }
+          break;
+        case "c":
+          event.preventDefault();
+          toggleSubtitles();
           break;
 
         case "arrowleft":
           event.preventDefault();
-          videoElement.currentTime = Math.max(
-            0,
-            videoElement.currentTime - 5
-          );
+          handleSkip(event.shiftKey ? -30 : -10);
           break;
 
         case "arrowright":
           event.preventDefault();
-          videoElement.currentTime = Math.min(
-            videoElement.duration || 0,
-            videoElement.currentTime + 5
-          );
+          handleSkip(event.shiftKey ? 30 : 10);
           break;
 
         case "arrowup": {
           event.preventDefault();
 
-          const newVolumeUp = Math.min(
-            1,
-            videoElement.volume + 0.1
-          );
+          const newVolumeUp = Math.min(1, videoElement.volume + 0.1);
 
           videoElement.volume = newVolumeUp;
           videoElement.muted = false;
@@ -143,10 +231,7 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
         case "arrowdown": {
           event.preventDefault();
 
-          const newVolumeDown = Math.max(
-            0,
-            videoElement.volume - 0.1
-          );
+          const newVolumeDown = Math.max(0, videoElement.volume - 0.1);
 
           videoElement.volume = newVolumeDown;
           videoElement.muted = newVolumeDown === 0;
@@ -159,6 +244,21 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
         case "0":
           videoElement.currentTime = 0;
           setProgress(0);
+          break;
+
+        case "p":
+          if (document.pictureInPictureElement) {
+            void document.exitPictureInPicture();
+          } else if (document.pictureInPictureEnabled) {
+            void videoElement.requestPictureInPicture().catch((error) => {
+              console.error("Picture-in-Picture error:", error);
+            });
+          }
+          break;
+
+        case "t":
+          setIsTheaterMode((prev) => !prev);
+          resetControlsTimer();
           break;
       }
     };
@@ -183,26 +283,101 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
     if (!videoElement) return;
 
     setProgress(videoElement.currentTime);
+
+    if (isSubtitlesEnabled) {
+      const track = subtitleTrackRef.current?.track;
+      const activeCue = track?.activeCues?.[0] as VTTCue | undefined;
+      setSubtitleText(activeCue?.text || "");
+    }
+  };
+
+  useEffect(() => {
+    setSelectedQuality("Original");
+    setVideoSource(video.filepath);
+    pendingPlaybackRef.current = null;
+  }, [video._id, video.filepath]);
+
+  const handleQualityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const quality = e.target.value;
+    const source = quality === "Original"
+      ? video.filepath
+      : video.qualities?.find((item) => item.label === quality)?.filepath;
+
+    if (!source || source === videoSource) return;
+
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    pendingPlaybackRef.current = {
+      time: videoElement.currentTime,
+      shouldPlay: !videoElement.paused,
+    };
+
+    setSelectedQuality(quality);
+    setVideoSource(source);
+    setIsBuffering(true);
   };
 
   const handleLoadedMetadata = () => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    console.log("METADATA EVENT FIRED");
-    console.log("Video ID:", video._id);
-    console.log("Video filepath:", video.filepath);
-    console.log("Video URL:", videoElement.currentSrc);
-    console.log("Duration in seconds:", videoElement.duration);
-    console.log("Duration formatted:", formatTime(videoElement.duration));
-
     setDuration(videoElement.duration);
-    setProgress(videoElement.currentTime);
+
+    const pending = pendingPlaybackRef.current;
+    if (pending) {
+      videoElement.currentTime = Math.min(pending.time, videoElement.duration || pending.time);
+      setProgress(videoElement.currentTime);
+      pendingPlaybackRef.current = null;
+
+      if (pending.shouldPlay) {
+        void videoElement.play().catch((error) => {
+          console.error("Video quality switch playback error:", error);
+        });
+      }
+    } else {
+      setProgress(videoElement.currentTime);
+    }
   };
 
-  const handleSeek = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleBufferProgress = () => {
+    const videoElement = videoRef.current;
+
+    if (
+      !videoElement ||
+      !Number.isFinite(videoElement.duration) ||
+      videoElement.duration <= 0
+    )
+      return;
+
+    if (videoElement.buffered.length > 0) {
+      const bufferedEnd = videoElement.buffered.end(
+        videoElement.buffered.length - 1
+      );
+
+      const percentage = (bufferedEnd / videoElement.duration) * 100;
+      setBufferedProgress(Math.min(100, percentage));
+    }
+  };
+
+  // 2. Timeline hover mouse handlers
+  const handleTimelineMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = timelineRef.current?.getBoundingClientRect();
+    if (!rect || duration <= 0) return;
+
+    const mouseX = e.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, mouseX / rect.width));
+    const previewTime = percentage * duration;
+
+    setHoverPreviewTime(previewTime);
+    setHoverPreviewX(Math.max(80, Math.min(mouseX, rect.width - 80)));
+  };
+
+  const handleTimelineMouseLeave = () => {
+    setHoverPreviewTime(null);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
@@ -214,9 +389,7 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
     resetControlsTimer();
   };
 
-  const handleVolumeChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
@@ -231,6 +404,25 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
     resetControlsTimer();
   };
 
+  const toggleSubtitles = () => {
+    const track = subtitleTrackRef.current?.track;
+    if (!track) return;
+
+    const enable = !isSubtitlesEnabled;
+
+    track.mode = enable ? "hidden" : "disabled";
+    setIsSubtitlesEnabled(enable);
+
+    if (enable) {
+      const activeCue = track.activeCues?.[0] as VTTCue | undefined;
+      setSubtitleText(activeCue?.text || "");
+    } else {
+      setSubtitleText("");
+    }
+
+    resetControlsTimer();
+  };
+
   const toggleMute = () => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
@@ -241,17 +433,45 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
     resetControlsTimer();
   };
 
-  const toggleFullscreen = () => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
+  const toggleFullscreen = async () => {
+    const playerElement = playerRef.current;
+    if (!playerElement) return;
 
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void videoElement.requestFullscreen();
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await playerElement.requestFullscreen();
+      }
+    } catch (error) {
+      console.error("Fullscreen error:", error);
     }
 
     resetControlsTimer();
+  };
+
+  const handleDoubleClick = () => {
+    toggleFullscreen();
+  };
+
+  const toggleTheaterMode = () => {
+    setIsTheaterMode((prev) => !prev);
+    resetControlsTimer();
+  };
+
+  const togglePictureInPicture = async () => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled) {
+        await videoElement.requestPictureInPicture();
+      }
+    } catch (error) {
+      console.error("Picture-in-Picture error:", error);
+    }
   };
 
   const formatTime = (time: number) => {
@@ -263,17 +483,31 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  const progressPercentage =
+    duration > 0 ? (progress / duration) * 100 : 0;
+
   return (
     <div
-      className="relative bg-black rounded-lg overflow-hidden"
+      ref={playerRef}
+      className={`relative bg-black overflow-hidden transition-all duration-300 select-none ${
+        isTheaterMode
+          ? "fixed inset-x-0 top-16 z-40 w-full rounded-none"
+          : "w-full rounded-lg"
+      }`}
       onMouseMove={handleMouseMove}
+      onDoubleClick={handleDoubleClick}
     >
       <video
         ref={videoRef}
         className="w-full aspect-video"
+        src={videoSource}
         onClick={togglePlay}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
+        onProgress={handleBufferProgress}
+        onWaiting={() => setIsBuffering(true)}
+        onCanPlay={() => setIsBuffering(false)}
+        onPlaying={() => setIsBuffering(false)}
         onPlay={() => {
           setIsPlaying(true);
           resetControlsTimer();
@@ -281,39 +515,150 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
         onPause={() => {
           setIsPlaying(false);
           setShowControls(true);
-        }}
-        onEnded={() => {
-          setIsPlaying(false);
-          setShowControls(true);
-          setProgress(duration);
-        }}
-      >
-        <source
-          src={
-            video.filepath.startsWith("http")
-              ? video.filepath
-              : `${process.env.NEXT_PUBLIC_BACKEND_URL}/${video.filepath.replace(/^\/+/, "")}`
+
+          if (hideControlsTimer.current) {
+            clearTimeout(hideControlsTimer.current);
           }
-          type="video/mp4"
-        />
+        }}
+        onEnded={handleVideoEnded}
+        autoPlay={autoPlay}
+      >
+        {video.subtitleUrl && (
+          <track
+            ref={subtitleTrackRef}
+            kind="subtitles"
+            src={video.subtitleUrl}
+            srcLang={video.subtitleLanguage || "en"}
+            label={video.subtitleLabel || "English"}
+            onLoad={() => {
+              const track = subtitleTrackRef.current?.track;
+              if (!track) return;
+
+              track.mode = isSubtitlesEnabled ? "hidden" : "disabled";
+
+              const updateSubtitle = () => {
+                const activeCue = track.activeCues?.[0] as VTTCue | undefined;
+                setSubtitleText(activeCue?.text || "");
+              };
+
+              track.addEventListener("cuechange", updateSubtitle);
+              updateSubtitle();
+            }}
+            onError={() => {
+              console.error("Subtitle file failed to load:", video.subtitleUrl);
+            }}
+          />
+        )}
         Your browser does not support the video tag.
       </video>
 
+      {/* Autoplay Countdown Overlay */}
+      {countdown !== null && nextVideo && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-gray-900 p-6 text-center text-white shadow-xl">
+            <p className="text-sm text-gray-400">Up next</p>
+            <h3 className="mt-2 text-xl font-bold">{nextVideo.videotitle}</h3>
+            <p className="mt-4 text-5xl font-bold">{countdown}</p>
+            <p className="mt-2 text-sm text-gray-300">
+              Playing next video in {countdown} seconds
+            </p>
+            <div className="mt-6 flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setCountdown(null);
+                  void router.push(`/watch/${nextVideo._id}?autoplay=1`);
+                }}
+                className="rounded-lg bg-white px-4 py-2 font-semibold text-black hover:bg-gray-200 transition"
+              >
+                Play Now
+              </button>
+              <button
+                type="button"
+                onClick={cancelAutoplay}
+                className="rounded-lg bg-gray-700 px-4 py-2 font-semibold text-white hover:bg-gray-600 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSubtitlesEnabled && subtitleText && (
+        <div
+          className="absolute left-0 right-0 flex justify-center px-4 pointer-events-none"
+          style={{
+            bottom: showControls ? "90px" : "8%",
+            zIndex: 30,
+          }}
+        >
+          <div className="w-[85%] max-w-[1100px] rounded-md bg-black/90 px-8 py-3 text-center text-lg font-semibold text-white whitespace-pre-line shadow-lg">
+            {subtitleText}
+          </div>
+        </div>
+      )}
+
+      {isBuffering && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+        </div>
+      )}
+
       <div
-        className={`absolute bottom-0 left-0 right-0 bg-black/90 px-3 py-2 transition-opacity duration-300 ${showControls
-            ? "opacity-100"
-            : "opacity-0 pointer-events-none"
-          }`}
+        className={`absolute bottom-0 left-0 right-0 bg-black/90 px-3 py-2 transition-opacity duration-300 ${
+          showControls ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
       >
-        <input
-          type="range"
-          min="0"
-          max={duration || 0}
-          step="0.1"
-          value={progress}
-          onChange={handleSeek}
-          className="w-full h-1 cursor-pointer"
-        />
+        {/* 4. Timeline with Hover Preview */}
+        <div
+          ref={timelineRef}
+          className="relative w-full"
+          onMouseMove={handleTimelineMouseMove}
+          onMouseLeave={handleTimelineMouseLeave}
+        >
+          {hoverPreviewTime !== null && (
+            <div
+              className="absolute bottom-full mb-3 z-50 pointer-events-none"
+              style={{
+                left: `${hoverPreviewX}px`,
+                transform: "translateX(-50%)",
+              }}
+            >
+              <div className="w-40 overflow-hidden rounded-lg border border-white/30 bg-black shadow-xl">
+                <video
+                  ref={previewVideoRef}
+                  src={videoSource}
+                  muted
+                  playsInline
+                  preload="metadata"
+                  className="w-full aspect-video object-cover"
+                  onLoadedMetadata={(e) => {
+                    if (hoverPreviewTime !== null) {
+                      e.currentTarget.currentTime = hoverPreviewTime;
+                    }
+                  }}
+                />
+                <div className="py-1 text-center text-xs font-semibold text-white">
+                  {formatTime(hoverPreviewTime)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <input
+            type="range"
+            min="0"
+            max={duration || 0}
+            step="0.1"
+            value={progress}
+            onChange={handleSeek}
+            className="w-full h-1 cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, #ffffff ${progressPercentage}%, #aaaaaa ${progressPercentage}%, #aaaaaa ${bufferedProgress}%, #555555 ${bufferedProgress}%)`,
+            }}
+          />
+        </div>
 
         <div className="flex items-center gap-3 mt-2 text-white flex-wrap">
           <button
@@ -323,6 +668,24 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
             aria-label={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? "⏸" : "▶"}
+          </button>
+
+          <button
+            onClick={() => handleSkip(-10)}
+            className="text-sm"
+            type="button"
+            aria-label="Rewind 10 seconds"
+          >
+            -10
+          </button>
+
+          <button
+            onClick={() => handleSkip(10)}
+            className="text-sm"
+            type="button"
+            aria-label="Forward 10 seconds"
+          >
+            +10
           </button>
 
           <button
@@ -346,10 +709,28 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
           />
 
           <span className="text-sm whitespace-nowrap">
-            {formatTime(progress)} / {formatTime(duration)}
+            {formatTime(progress)} / -
+            {formatTime(Math.max(0, duration - progress))}
           </span>
 
           <div className="flex-1" />
+
+          <label className="flex items-center gap-1 text-sm whitespace-nowrap">
+            <span>Quality</span>
+            <select
+              value={selectedQuality}
+              onChange={handleQualityChange}
+              className="bg-gray-800 text-white rounded px-2 py-1"
+              aria-label="Video quality"
+            >
+              <option value="Original">Original</option>
+              {(video.qualities || []).map((quality) => (
+                <option key={quality.label} value={quality.label}>
+                  {quality.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="flex items-center gap-1 text-sm whitespace-nowrap">
             <span>Speed</span>
@@ -370,12 +751,48 @@ export default function VideoPlayer({ video }: VideoPlayerProps) {
           </label>
 
           <button
+            onClick={toggleTheaterMode}
+            className="text-lg"
+            type="button"
+            aria-label={isTheaterMode ? "Exit theater mode" : "Theater mode"}
+            title={isTheaterMode ? "Exit theater mode" : "Theater mode"}
+          >
+            {isTheaterMode ? "▣" : "▭"}
+          </button>
+
+          {video.subtitleUrl && (
+            <button
+              onClick={toggleSubtitles}
+              className={`text-sm font-semibold ${
+                isSubtitlesEnabled ? "text-yellow-400" : "text-white"
+              }`}
+              type="button"
+              aria-label={
+                isSubtitlesEnabled ? "Disable subtitles" : "Enable subtitles"
+              }
+              aria-pressed={isSubtitlesEnabled}
+              title="Subtitles (C)"
+            >
+              CC
+            </button>
+          )}
+
+          <button
             onClick={toggleFullscreen}
             className="text-lg"
             type="button"
             aria-label="Toggle fullscreen"
           >
             ⛶
+          </button>
+
+          <button
+            onClick={togglePictureInPicture}
+            className="text-lg"
+            type="button"
+            aria-label="Picture in Picture"
+          >
+            ▣
           </button>
         </div>
       </div>

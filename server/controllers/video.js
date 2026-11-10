@@ -16,16 +16,26 @@ const uploadToCloudinary = (buffer, publicId) => {
         format: "mp4",
       },
       (error, result) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(result);
-        }
+        if (error) reject(error);
+        else resolve(result);
       }
     );
-
     stream.end(buffer);
   });
+};
+
+const generateQualities = (publicId) => {
+  const resolutions = [
+    { label: "360p", width: 640, height: 360 },
+    { label: "480p", width: 854, height: 480 },
+    { label: "720p", width: 1280, height: 720 },
+    { label: "1080p", width: 1920, height: 1080 },
+  ];
+
+  return resolutions.map(({ label, width, height }) => ({
+    label,
+    filepath: `https://res.cloudinary.com/tkqw8ckt/video/upload/w_${width},h_${height},c_limit,q_auto:good,f_mp4/${publicId}.mp4`,
+  }));
 };
 
 export const uploadvideo = async (req, res) => {
@@ -40,13 +50,9 @@ export const uploadvideo = async (req, res) => {
   try {
     const originalName = req.file.originalname;
     const title = req.body.videotitle || path.parse(originalName).name;
-    const publicId = `${Date.now()}-${path.parse(originalName).name
-      .replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+    const publicId = `${Date.now()}-${path.parse(originalName).name.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
-    uploadedAsset = await uploadToCloudinary(
-      req.file.buffer,
-      publicId
-    );
+    uploadedAsset = await uploadToCloudinary(req.file.buffer, publicId);
 
     const thumbnail = cloudinary.url(uploadedAsset.public_id, {
       resource_type: "video",
@@ -62,6 +68,7 @@ export const uploadvideo = async (req, res) => {
       videotitle: title,
       filename: originalName,
       filepath: uploadedAsset.secure_url,
+      publicId: uploadedAsset.public_id,
       thumbnail,
       filetype: "video/mp4",
       filesize: String(uploadedAsset.bytes),
@@ -121,6 +128,9 @@ export const getallvideo = async (req, res) => {
         return {
           ...item.toObject(),
           channelImage,
+          qualities: item.publicId
+            ? generateQualities(item.publicId)
+            : [],
         };
       })
     );

@@ -1,4 +1,3 @@
-
 import Comments from "@/components/Comments";
 import RelatedVideos from "@/components/RelatedVideos";
 import VideoInfo from "@/components/VideoInfo";
@@ -7,7 +6,7 @@ import axiosInstance from "@/lib/axiosinstance";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
 
-const index = () => {
+const WatchPage = () => {
   const router = useRouter();
   const { id } = router.query;
   const videoId = Array.isArray(id) ? id[0] : id;
@@ -20,11 +19,11 @@ const index = () => {
       if (!videoId) return;
       try {
         const res = await axiosInstance.get("/video/getall");
-        const video = res.data?.filter((vid: any) => vid._id === videoId);
-        setvideo(video[0]);
+        const matchedVideo = res.data?.filter((vid: any) => vid._id === videoId);
+        setvideo(matchedVideo[0]);
         setvide(res.data);
       } catch (error) {
-        console.log(error);
+        console.error(error);
       } finally {
         setloading(false);
       }
@@ -40,12 +39,36 @@ const index = () => {
     return <div>Video not found</div>;
   }
 
+  const videoTitle = String(
+    videos.videotitle || videos.filename || ""
+  ).toLowerCase();
+
+  const subtitleUrl = videoTitle.includes("grateful")
+    ? "/subtitles/grateful-neffex-en.vtt"
+    : videoTitle.includes("mortals")
+      ? "/subtitles/mortals-warriyo-en.vtt"
+      : undefined;
+
+  const currentIndex = video?.findIndex((vid: any) => vid._id === videoId) ?? -1;
+  const nextVideo = currentIndex >= 0 ? video[currentIndex + 1] : undefined;
+  const autoPlay = router.query.autoplay === "1";
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-7xl mx-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
-            <Videopplayer video={videos} />
+            <Videopplayer
+              key={videos._id}
+              video={{
+                ...videos,
+                subtitleUrl,
+                subtitleLanguage: "en",
+                subtitleLabel: "English",
+              }}
+              nextVideo={nextVideo}
+              autoPlay={autoPlay}
+            />
             <VideoInfo video={videos} />
             {videoId && <Comments videoId={videoId} />}
           </div>
@@ -58,4 +81,4 @@ const index = () => {
   );
 };
 
-export default index;
+export default WatchPage;
