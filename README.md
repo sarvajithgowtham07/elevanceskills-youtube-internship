@@ -1,69 +1,45 @@
-# ElevanceSkills YouTube Internship Project
+# Feature 3 — Download limits and offline downloads
 
-A full-stack YouTube-style video streaming platform developed as part of my ElevanceSkills internship.
+## Included files
 
-## Overview
+Copy these files into the matching locations in your project:
 
-This project is based on the YouTube-style training project provided for the ElevanceSkills internship. The application is being enhanced with additional features required as part of the internship tasks.
+- `server/controllers/download.js`
+- `server/controllers/downloadHistory.js`
+- `server/Modals/Download.js`
+- `server/Modals/DownloadQuota.js`
+- `server/utils/downloadLimits.js`
+- `server/routes/video.js`
+- `frontend/components/Videopplayer.tsx`
 
-## Tech Stack
+## Existing plan limits preserved
 
-### Frontend
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-- Axios
+| Plan | Daily | Monthly |
+|---|---:|---:|
+| Free | 1 | 30 |
+| Bronze | 5 | 150 |
+| Silver | 10 | 300 |
+| Gold | 20 | 600 |
 
-### Backend
-- Node.js
-- Express.js
-- MongoDB
-- Mongoose
+## Behavior
 
-### Tools
-- Visual Studio Code
-- Git & GitHub
-- Postman
-- MongoDB Atlas
+- The player has a Download button.
+- The frontend requests the authenticated `/video/download/:videoId` endpoint as a Blob and saves the returned file to the user's device for offline viewing.
+- Daily and monthly quotas are enforced on the backend.
+- Re-downloading the same video within 24 hours is rejected if the earlier download is pending or completed and counted toward quota.
+- A failed download releases its reserved daily and monthly quota.
+- Downloads require the plan to meet the video's `accessLevel`.
+- Download history and remaining daily/monthly quotas are retrieved from `/video/downloads/history`.
+- Quota period keys use Asia/Kolkata dates.
 
-## Current Features
+## Apply
 
-- YouTube-style homepage
-- Video listing
-- Video upload
-- Video metadata storage
-- MongoDB integration
-- REST API
-- Frontend-backend integration
-- Responsive user interface
+1. Back up the existing files.
+2. Replace the files listed above with the versions in this ZIP.
+3. Keep your existing `.env`, MongoDB connection, Cloudinary configuration, and authentication setup.
+4. Restart the backend and frontend.
+5. Sign in and open a video. Use Download and confirm the file appears in the browser's download list and can play after disconnecting from the internet.
 
-## Internship Features
+## Important
 
-The project will be extended with the following features:
-
-1. Real-time video calling
-2. Controlled video downloads
-3. Subscription management
-4. Custom HTML5 video player
-5. Personalized and secure login
-6. Advanced multilingual comments
-
-## Project Structure
-
-```text
-you_tube2.0/
-├── server/
-│   ├── controllers/
-│   ├── routes/
-│   ├── Modals/
-│   ├── filehelper/
-│   └── index.js
-│
-├── yourtube/
-│   ├── src/
-│   ├── public/
-│   └── package.json
-│
-├── README.md
-└── package-lock.json
+The browser saves the downloaded video as a normal file. This is offline file download, not encrypted in-app offline storage or DRM. The project currently uses finite Gold limits from the supplied `downloadLimits.js`; they have not been changed.

@@ -13,6 +13,7 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
+  const [accessLevel, setAccessLevel] = useState("Free");
   const [uploadComplete, setUploadComplete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,6 +40,7 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
   const resetForm = () => {
     setVideoFile(null);
     setVideoTitle("");
+    setAccessLevel("Free");
     setIsUploading(false);
     setUploadProgress(0);
     setUploadComplete(false);
@@ -69,6 +71,7 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
     formdata.append("videotitle", videoTitle.trim());
     formdata.append("videochanel", channelName);
     formdata.append("uploader", channelId);
+    formdata.append("accessLevel", accessLevel);
 
     try {
       setIsUploading(true);
@@ -81,11 +84,12 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
               Math.round((event.loaded * 100) / event.total)
             );
           }
-        },
+        }
       });
 
       setUploadComplete(true);
       toast.success(res.data?.message || "Video uploaded successfully.");
+
       if (typeof onUploadSuccess === "function") {
         await onUploadSuccess();
       }
@@ -162,6 +166,25 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
                 disabled={isUploading || uploadComplete}
                 className="mt-1"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="accessLevel">Video Access Level</Label>
+              <select
+                id="accessLevel"
+                value={accessLevel}
+                onChange={(e) => setAccessLevel(e.target.value)}
+                disabled={isUploading || uploadComplete}
+                className="mt-1 w-full h-10 rounded-md border border-gray-300 bg-white px-3 text-sm"
+              >
+                <option value="Free">Free</option>
+                <option value="Bronze">Bronze</option>
+                <option value="Silver">Silver</option>
+                <option value="Gold">Gold</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Viewers need the corresponding active subscription to watch premium videos.
+              </p>
             </div>
 
             {isUploading && (

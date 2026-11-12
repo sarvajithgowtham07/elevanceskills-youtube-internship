@@ -169,6 +169,10 @@ const Header = () => {
                 </DropdownMenuItem>
 
                 <DropdownMenuItem asChild>
+                  <Link href="/subscription">Subscription & Plans</Link>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem asChild>
                   <Link href="/security">Account Security</Link>
                 </DropdownMenuItem>
 

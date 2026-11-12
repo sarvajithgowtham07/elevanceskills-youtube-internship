@@ -9,8 +9,15 @@ export const getDownloadHistory = async (req, res) => {
   try {
     const userId = req.user.id;
     const now = new Date();
-    const dailyKey = now.toISOString().slice(0, 10);
-    const monthlyKey = now.toISOString().slice(0, 7);
+    const dateParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const dateValues = Object.fromEntries(dateParts.map(({ type, value }) => [type, value]));
+    const dailyKey = `${dateValues.year}-${dateValues.month}-${dateValues.day}`;
+    const monthlyKey = `${dateValues.year}-${dateValues.month}`;
 
     const [downloads, subscription] = await Promise.all([
       Download.find({ userId })
@@ -21,13 +28,18 @@ export const getDownloadHistory = async (req, res) => {
         })
         .sort({ downloadedAt: -1 })
         .limit(100),
-      Subscription.findOne({
-        userId,
-        status: "active",
-      }),
+      Subscription.findOne({ userId }),
     ]);
 
-    const plan = subscription?.plan || "Free";
+    let plan = "Free";
+    if (subscription?.status === "active") {
+      if (subscription.endDate && subscription.endDate <= now) {
+        subscription.status = "expired";
+        await subscription.save();
+      } else {
+        plan = subscription.plan || "Free";
+      }
+    }
     const limits = downloadLimits[plan] || downloadLimits.Free;
 
     const [dailyQuota, monthlyQuota] = await Promise.all([

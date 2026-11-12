@@ -18,6 +18,20 @@ const videochema = mongoose.Schema(
     publicId: {
       type: String,
     },
+    accessLevel: {
+      type: String,
+      enum: ["Free", "Bronze", "Silver", "Gold"],
+      default: "Free"
+    },
+    qualities: {
+      type: [
+        {
+          label: { type: String, required: true },
+          filepath: { type: String, required: true }
+        }
+      ],
+      default: []
+    }
   },
   {
     timestamps: true,

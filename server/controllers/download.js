@@ -9,10 +9,19 @@ import Download from "../Modals/Download.js";
 import DownloadQuota from "../Modals/DownloadQuota.js";
 import downloadLimits from "../utils/downloadLimits.js";
 
-const getPeriodKeys = (date) => ({
-  daily: date.toISOString().slice(0, 10),
-  monthly: date.toISOString().slice(0, 7),
-});
+const getPeriodKeys = (date) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return {
+    daily: `${values.year}-${values.month}-${values.day}`,
+    monthly: `${values.year}-${values.month}`,
+  };
+};
 
 const reserveQuota = async ({ userId, plan, period, periodKey, limit }) => {
   const filter = { userId, period, periodKey };
@@ -45,6 +54,13 @@ const reserveQuota = async ({ userId, plan, period, periodKey, limit }) => {
   }
 };
 
+const planHierarchy = {
+  Free: 0,
+  Bronze: 1,
+  Silver: 2,
+  Gold: 3,
+};
+
 const releaseQuota = async (quotaId) => {
   if (!quotaId) return;
 
@@ -67,27 +83,19 @@ export const downloadVideo = async (req, res) => {
       return res.status(400).json({ message: "Invalid video ID" });
     }
 
-    const subscription = await Subscription.findOne({
-      userId,
-      status: "active",
-    });
+    const subscription = await Subscription.findOne({ userId });
+    const now = new Date();
+    let plan = "Free";
 
-    if (!subscription) {
-      return res.status(403).json({
-        message: "An active subscription is required",
-      });
+    if (subscription?.status === "active") {
+      if (subscription.endDate && subscription.endDate <= now) {
+        subscription.status = "expired";
+        await subscription.save();
+      } else {
+        plan = subscription.plan || "Free";
+      }
     }
 
-    if (subscription.endDate && subscription.endDate <= new Date()) {
-      subscription.status = "expired";
-      await subscription.save();
-
-      return res.status(403).json({
-        message: "Your subscription has expired",
-      });
-    }
-
-    const plan = subscription.plan;
     const limits = downloadLimits[plan];
 
     if (!limits) {
@@ -102,6 +110,13 @@ export const downloadVideo = async (req, res) => {
 
     if (!videoFile.filepath) {
       return res.status(404).json({ message: "Video file not found" });
+    }
+
+    const requiredPlan = videoFile.accessLevel || "Free";
+    if ((planHierarchy[plan] ?? 0) < (planHierarchy[requiredPlan] ?? 0)) {
+      return res.status(403).json({
+        message: `This video requires the ${requiredPlan} plan or higher.`,
+      });
     }
 
     let videoUrl;
@@ -123,7 +138,6 @@ export const downloadVideo = async (req, res) => {
       });
     }
 
-    const now = new Date();
     const keys = getPeriodKeys(now);
     const duplicateSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
