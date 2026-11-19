@@ -125,12 +125,15 @@ const Header = () => {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="relative h-8 w-8 rounded-full"
+                  className="relative h-10 w-auto rounded-full flex items-center gap-2 px-3"
                 >
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={user.image} />
                     <AvatarFallback>{user.name?.[0] || "U"}</AvatarFallback>
                   </Avatar>
+                  <span className="text-sm font-medium">
+                    {user.name || user.email || "User"}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
 
