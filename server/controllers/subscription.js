@@ -40,29 +40,16 @@ const applyScheduledChange = async (subscription) => {
     return subscription;
   }
 
-  const nextPlan = subscription.pendingPlan;
-
-  if (nextPlan === "Free") {
-    subscription.plan = "Free";
-    subscription.billingCycle = "monthly";
-    subscription.status = "active";
-    subscription.startDate = null;
-    subscription.endDate = null;
-    subscription.autoRenew = false;
-    subscription.cancelledAt = null;
-    subscription.pendingPlan = null;
-    subscription.pendingBillingCycle = null;
-    subscription.pendingChangeDate = null;
-  } else {
-    subscription.plan = "Free";
-    subscription.billingCycle = "monthly";
-    subscription.status = "active";
-    subscription.startDate = null;
-    subscription.endDate = null;
-    subscription.autoRenew = false;
-    subscription.cancelledAt = null;
-    subscription.pendingChangeDate = null;
-  }
+  subscription.plan = "Free";
+  subscription.billingCycle = "monthly";
+  subscription.status = "active";
+  subscription.startDate = null;
+  subscription.endDate = null;
+  subscription.autoRenew = false;
+  subscription.cancelledAt = null;
+  subscription.pendingPlan = null;
+  subscription.pendingBillingCycle = null;
+  subscription.pendingChangeDate = null;
 
   await subscription.save();
   return subscription;
@@ -97,10 +84,9 @@ export const getMySubscription = async (req, res) => {
       subscription.autoRenew = false;
       subscription.cancelledAt = null;
 
-      if (!subscription.pendingPlan) {
-        subscription.pendingBillingCycle = null;
-        subscription.pendingChangeDate = null;
-      }
+      subscription.pendingPlan = null;
+      subscription.pendingBillingCycle = null;
+      subscription.pendingChangeDate = null;
 
       await subscription.save();
     }

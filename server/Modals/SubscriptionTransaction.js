@@ -59,6 +59,8 @@ const subscriptionTransactionSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     }
-}, { timestamps: true });
+},  { timestamps: true });
+
+subscriptionTransactionSchema.index({ userId: 1, createdAt: -1 });
 
 export default mongoose.model("SubscriptionTransaction", subscriptionTransactionSchema);

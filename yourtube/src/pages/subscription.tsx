@@ -13,6 +13,9 @@ type SubscriptionData = {
   startDate: string | null;
   endDate: string | null;
   autoRenew: boolean;
+  pendingPlan?: PlanName | null;
+  pendingBillingCycle?: BillingCycle | null;
+  pendingChangeDate?: string | null;
 };
 
 type Transaction = {
@@ -94,8 +97,16 @@ const plans = [
   }
 ];
 
+const planRanks: Record<PlanName, number> = {
+  Free: 0,
+  Bronze: 1,
+  Silver: 2,
+  Gold: 3
+};
+
 const formatDate = (date: string | null) => {
   if (!date) return "—";
+
   return new Date(date).toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -110,9 +121,21 @@ const loadRazorpayScript = () =>
       return;
     }
 
+    const scriptUrl = "https://checkout.razorpay.com/v1/checkout.js";
+    const existingScript = document.querySelector(
+      `script[src="${scriptUrl}"]`
+    ) as HTMLScriptElement | null;
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(Boolean(window.Razorpay)), { once: true });
+      existingScript.addEventListener("error", () => resolve(false), { once: true });
+      if (window.Razorpay) resolve(true);
+      return;
+    }
+
     const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
+    script.src = scriptUrl;
+    script.onload = () => resolve(Boolean(window.Razorpay));
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
   });
@@ -124,6 +147,7 @@ export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [downloadingInvoice, setDownloadingInvoice] = useState<string | null>(null);
+  const [changingPlan, setChangingPlan] = useState(false);
 
   const loadSubscription = async () => {
     try {
@@ -138,10 +162,13 @@ export default function SubscriptionPage() {
   };
 
   useEffect(() => {
-    loadSubscription();
+    void loadSubscription();
   }, []);
 
-  const updatePaymentStatus = async (orderId: string, status: "failed" | "cancelled") => {
+  const updatePaymentStatus = async (
+    orderId: string,
+    status: "failed" | "cancelled"
+  ) => {
     try {
       await axiosInstance.post("/payment/status", { orderId, status });
     } catch {
@@ -189,8 +216,9 @@ export default function SubscriptionPage() {
     try {
       const scriptLoaded = await loadRazorpayScript();
 
-      if (!scriptLoaded) {
+      if (!scriptLoaded || !window.Razorpay) {
         toast.error("Unable to load Razorpay Checkout");
+        setProcessing(false);
         return;
       }
 
@@ -253,7 +281,7 @@ export default function SubscriptionPage() {
       });
 
       razorpay.open();
-    } catch (error) {
+    } catch {
       toast.error("Unable to initiate payment");
 
       if (orderId) {
@@ -264,12 +292,60 @@ export default function SubscriptionPage() {
     }
   };
 
+  const scheduleDowngrade = async (plan: PlanName) => {
+    if (changingPlan) return;
+
+    setChangingPlan(true);
+
+    try {
+      const response = await axiosInstance.post("/subscription/downgrade", {
+        plan,
+        billingCycle: plan === "Free" ? null : billingCycle
+      });
+
+      toast.success(response.data.message);
+      await loadSubscription();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Unable to schedule downgrade"
+      );
+    } finally {
+      setChangingPlan(false);
+    }
+  };
+
+  const cancelDowngrade = async () => {
+    if (changingPlan) return;
+
+    setChangingPlan(true);
+
+    try {
+      const response = await axiosInstance.delete("/subscription/downgrade");
+      toast.success(response.data.message);
+      await loadSubscription();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Unable to cancel scheduled downgrade"
+      );
+    } finally {
+      setChangingPlan(false);
+    }
+  };
+
   if (loading) {
-    return <div className="w-full p-8 text-center">Loading subscription details...</div>;
+    return (
+      <div className="w-full p-8 text-center">
+        Loading subscription details...
+      </div>
+    );
   }
 
   if (!subscription) {
-    return <div className="w-full p-8 text-center">Unable to load subscription details.</div>;
+    return (
+      <div className="w-full p-8 text-center">
+        Unable to load subscription details.
+      </div>
+    );
   }
 
   return (
@@ -283,24 +359,81 @@ export default function SubscriptionPage() {
 
       <section className="rounded-xl border p-6 space-y-3">
         <h2 className="text-xl font-semibold">Your Current Subscription</h2>
+
+        {subscription.pendingPlan && (
+          <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/5 p-4 space-y-3">
+            <div>
+              <h3 className="font-semibold">Scheduled Plan Change</h3>
+
+              <p className="text-sm text-muted-foreground">
+                Requested next plan: {subscription.pendingPlan}
+              </p>
+
+              <p className="text-sm text-muted-foreground">
+                Effective date: {formatDate(subscription.pendingChangeDate || null)}
+              </p>
+
+              {subscription.pendingPlan !== "Free" && (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Selected billing cycle: {subscription.pendingBillingCycle}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Your current subscription remains active until its expiry
+                    date. After expiry, your account moves to the Free plan.
+                    You must purchase {subscription.pendingPlan} separately
+                    to activate that paid plan.
+                  </p>
+                </>
+              )}
+
+              {subscription.pendingPlan === "Free" && (
+                <p className="text-sm text-muted-foreground">
+                  Your subscription will move to the Free plan on the effective
+                  date shown above.
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={cancelDowngrade}
+              disabled={changingPlan}
+              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {changingPlan ? "Please wait..." : "Cancel Scheduled Change"}
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-sm text-muted-foreground">Current Plan</p>
             <p className="text-lg font-semibold">{subscription.plan}</p>
           </div>
+
           <div>
             <p className="text-sm text-muted-foreground">Status</p>
-            <p className="text-lg font-semibold capitalize">{subscription.status}</p>
+            <p className="text-lg font-semibold capitalize">
+              {subscription.status}
+            </p>
           </div>
+
           <div>
             <p className="text-sm text-muted-foreground">Start Date</p>
-            <p className="text-lg font-semibold">{formatDate(subscription.startDate)}</p>
+            <p className="text-lg font-semibold">
+              {formatDate(subscription.startDate)}
+            </p>
           </div>
+
           <div>
             <p className="text-sm text-muted-foreground">Expiry Date</p>
-            <p className="text-lg font-semibold">{formatDate(subscription.endDate)}</p>
+            <p className="text-lg font-semibold">
+              {formatDate(subscription.endDate)}
+            </p>
           </div>
         </div>
+
         <p className="text-sm text-muted-foreground">
           Auto-renewal: {subscription.autoRenew ? "Enabled" : "Disabled"}
         </p>
@@ -318,13 +451,13 @@ export default function SubscriptionPage() {
           {(["monthly", "quarterly", "yearly"] as BillingCycle[]).map((cycle) => (
             <button
               key={cycle}
+              type="button"
               onClick={() => setBillingCycle(cycle)}
               disabled={processing}
-              className={`rounded-lg border px-4 py-2 capitalize ${
-                billingCycle === cycle
+              className={`rounded-lg border px-4 py-2 capitalize ${billingCycle === cycle
                   ? "bg-primary text-primary-foreground"
                   : "bg-background"
-              }`}
+                }`}
             >
               {cycle}
             </button>
@@ -335,12 +468,15 @@ export default function SubscriptionPage() {
           {plans.map((plan) => {
             const isCurrent = subscription.plan === plan.name;
 
+            const isDowngrade =
+              planRanks[plan.name as PlanName] <
+              planRanks[subscription.plan];
+
             return (
               <div
                 key={plan.name}
-                className={`rounded-xl border p-5 flex flex-col gap-4 ${
-                  isCurrent ? "border-primary ring-1 ring-primary" : ""
-                }`}
+                className={`rounded-xl border p-5 flex flex-col gap-4 ${isCurrent ? "border-primary ring-1 ring-primary" : ""
+                  }`}
               >
                 <div>
                   <h3 className="text-xl font-bold">{plan.name}</h3>
@@ -367,18 +503,46 @@ export default function SubscriptionPage() {
                   ))}
                 </ul>
 
+                {isDowngrade && (
+                  <button
+                    type="button"
+                    disabled={
+                      changingPlan ||
+                      Boolean(subscription.pendingPlan) ||
+                      processing
+                    }
+                    onClick={() => scheduleDowngrade(plan.name as PlanName)}
+                    className="w-full rounded-lg border px-4 py-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {subscription.pendingPlan === plan.name
+                      ? "Change Scheduled"
+                      : changingPlan
+                        ? "Please wait..."
+                        : `Downgrade to ${plan.name}`}
+                  </button>
+                )}
+
                 <button
-                  disabled={isCurrent || plan.name === "Free" || processing}
+                  type="button"
+                  disabled={
+                    isCurrent ||
+                    plan.name === "Free" ||
+                    processing ||
+                    changingPlan ||
+                    Boolean(subscription.pendingPlan)
+                  }
                   onClick={() => handlePayment(plan.name)}
                   className="w-full rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isCurrent
                     ? "Current Plan"
                     : plan.name === "Free"
-                    ? "Free Plan"
-                    : processing
-                    ? "Processing..."
-                    : "Choose Plan"}
+                      ? "Free Plan"
+                      : processing
+                        ? "Processing..."
+                        : subscription.pendingPlan
+                          ? "Change Scheduled"
+                          : "Choose Plan"}
                 </button>
               </div>
             );
@@ -407,26 +571,36 @@ export default function SubscriptionPage() {
                   <th className="p-3">Action</th>
                 </tr>
               </thead>
+
               <tbody>
                 {billingHistory.map((transaction) => (
                   <tr key={transaction._id} className="border-t">
-                    <td className="p-3">{formatDate(transaction.createdAt)}</td>
+                    <td className="p-3">
+                      {formatDate(transaction.createdAt)}
+                    </td>
                     <td className="p-3">{transaction.plan}</td>
-                    <td className="p-3 capitalize">{transaction.billingCycle}</td>
+                    <td className="p-3 capitalize">
+                      {transaction.billingCycle}
+                    </td>
                     <td className="p-3">
                       ₹{(transaction.amount / 100).toLocaleString("en-IN")}
                     </td>
-                    <td className="p-3">{transaction.invoiceNumber || "—"}</td>
+                    <td className="p-3">
+                      {transaction.invoiceNumber || "—"}
+                    </td>
                     <td className="p-3 capitalize">{transaction.status}</td>
                     <td className="p-3">
-                      {transaction.status === "paid" && transaction.invoiceNumber ? (
+                      {transaction.status === "paid" &&
+                        transaction.invoiceNumber ? (
                         <button
                           type="button"
                           onClick={() => downloadInvoice(transaction)}
                           disabled={downloadingInvoice !== null}
                           className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {downloadingInvoice === transaction._id ? "Downloading..." : "Download"}
+                          {downloadingInvoice === transaction._id
+                            ? "Downloading..."
+                            : "Download"}
                         </button>
                       ) : (
                         "—"

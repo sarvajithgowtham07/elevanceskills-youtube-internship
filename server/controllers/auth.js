@@ -9,17 +9,37 @@ import { generateOTP, hashOTP } from "../utils/otp.js";
 import jwt from "jsonwebtoken";
 import admin from "../utils/firebaseAdmin.js";
 import geoip from "geoip-lite";
+import cloudinary from "../utils/cloudinary.js";
 
 const generateAuthToken = (user) => {
   if (!process.env.JWT_SECRET) {
     throw new Error("JWT_SECRET is not configured");
   }
-
   return jwt.sign(
     { sub: user._id.toString() },
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
+};
+
+const syncProfileImage = async (user, googleImage) => {
+  if (!googleImage || user.image?.includes("res.cloudinary.com")) {
+    return;
+  }
+
+  try {
+    const result = await cloudinary.uploader.upload(googleImage, {
+      folder: "yourtube/profile-photos",
+      public_id: user._id.toString(),
+      overwrite: true,
+      resource_type: "image",
+    });
+
+    user.image = result.secure_url;
+    await user.save();
+  } catch (error) {
+    console.error("Profile image upload error:", error.message);
+  }
 };
 
 const getDefaultTheme = () => {
@@ -301,12 +321,13 @@ export const login = async (req, res) => {
         user.themePreference = user.themeMode;
       }
 
-      if (image && user.image !== image) {
+      if (!user.image) {
         user.image = image;
+        await user.save();
       }
-
-      await user.save();
     }
+
+    await syncProfileImage(user, image);
 
     const userAgent = req.headers["user-agent"] || "";
     const deviceInfo = getDeviceInfo(userAgent, browserName);
@@ -977,22 +998,33 @@ export const revokeTrustedDevice = async (req, res) => {
 };
 
 
-export const searchUsers = async (req, res) => {
-  const { query } = req.params;
 
-  if (!query || !query.trim()) {
+export const searchUsers = async (req, res) => {
+  const query = req.params.query?.trim();
+
+  if (!query) {
     return res.status(200).json([]);
+  }
+
+  if (query.length > 50) {
+    return res.status(400).json({
+      message: "Search query is too long",
+    });
   }
 
   try {
     const searchRegex = new RegExp(
-      query.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       "i"
     );
 
     const foundUsers = await users
       .find({
-        $or: [{ name: searchRegex }, { channelname: searchRegex }],
+        _id: { $ne: req.user.id },
+        $or: [
+          { name: searchRegex },
+          { channelname: searchRegex },
+        ],
       })
       .select("_id name channelname image")
       .limit(10);
@@ -1006,6 +1038,7 @@ export const searchUsers = async (req, res) => {
     });
   }
 };
+
 
 export const syncVerifiedPhone = async (req, res) => {
   const { firebaseToken } = req.body;
@@ -1078,6 +1111,66 @@ export const syncVerifiedPhone = async (req, res) => {
 
     return res.status(500).json({
       message: "Unable to synchronize mobile number"
+    });
+  }
+};
+
+export const uploadChannelImage = async (req, res) => {
+  const userId = req.user.id;
+
+  if (!req.file) {
+    return res.status(400).json({
+      message: "Please select a channel logo"
+    });
+  }
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: "yourtube/channel-logos",
+          public_id: userId,
+          overwrite: true,
+          resource_type: "image"
+        },
+        (error, uploadedImage) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(uploadedImage);
+          }
+        }
+      );
+
+      uploadStream.end(req.file.buffer);
+    });
+
+    const updatedUser = await users.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          channelImage: result.secure_url
+        }
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      message: "Channel logo uploaded successfully",
+      channelImage: updatedUser.channelImage,
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error("Channel logo upload error:", error);
+
+    return res.status(500).json({
+      message: "Unable to upload channel logo"
     });
   }
 };

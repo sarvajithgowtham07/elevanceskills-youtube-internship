@@ -111,8 +111,8 @@ const Header = () => {
               type="button"
               variant="ghost"
               size="icon"
-              onClick={handleCreateClick}
-              title="Upload video"
+              onClick={() => router.push("/video-call")}
+              title="Video Call"
             >
               <VideoIcon className="w-6 h-6" />
             </Button>

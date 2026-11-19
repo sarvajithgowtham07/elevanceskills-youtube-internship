@@ -14,8 +14,23 @@ import {
   updateTrustedDeviceDuration
 } from "../controllers/auth.js";
 import verifyToken from "../middleware/authMiddleware.js";
+import multer from "multer";
+import { uploadChannelImage } from "../controllers/auth.js";
 
 const routes = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+});
 
 routes.post("/login", login);
 routes.post("/verify-otp", verifyLoginOTP);
@@ -26,6 +41,12 @@ routes.post("/phone/sync", verifyToken, syncVerifiedPhone);
 routes.patch("/update/:id", verifyToken, updateprofile);
 routes.patch("/theme/:id", verifyToken, updatetheme);
 routes.patch("/trusted-device-duration/:id", verifyToken, updateTrustedDeviceDuration);
+routes.patch(
+  "/upload-channel-image/:id",
+  verifyToken,
+  upload.single("channelImage"),
+  uploadChannelImage
+);
 
 routes.get("/login-history/:id", verifyToken, getLoginHistory);
 routes.get("/trusted-devices/:id", verifyToken, getTrustedDevices);
@@ -35,6 +56,6 @@ routes.delete(
   revokeTrustedDevice
 );
 
-routes.get("/search-users/:query", searchUsers);
+routes.get("/search-users/:query", verifyToken, searchUsers);
 
 export default routes;

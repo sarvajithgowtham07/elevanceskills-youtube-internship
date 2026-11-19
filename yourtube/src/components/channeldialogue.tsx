@@ -1,3 +1,4 @@
+
 import { useRouter } from "next/router";
 import React, { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import {
@@ -17,11 +18,15 @@ import { useUser } from "@/lib/AuthContext";
 const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
   const { user, login } = useUser();
   const router = useRouter();
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     channelImage: "",
   });
+
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
   const [isSubmitting, setisSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -29,10 +34,12 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
     if (!isopen) return;
 
     setErrorMessage("");
+    setSelectedImage(null);
+    setPreviewUrl("");
 
     if (channeldata && mode === "edit") {
       setFormData({
-        name: channeldata.name || "",
+        name: channeldata.name || channeldata.channelname || "",
         description: channeldata.description || "",
         channelImage: channeldata.channelImage || "",
       });
@@ -40,16 +47,46 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
       setFormData({
         name: user?.name || "",
         description: "",
-        channelImage: "",
+        channelImage: user?.channelImage || "",
       });
     }
   }, [channeldata, mode, user, isopen]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+      setErrorMessage("Please select a JPG, PNG, WEBP or GIF image.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage("Image size must not exceed 5 MB.");
+      e.target.value = "";
+      return;
+    }
+
+    setErrorMessage("");
+    setSelectedImage(file);
+    setPreviewUrl(URL.createObjectURL(file));
   };
 
   const handlesubmit = async (e: FormEvent) => {
@@ -66,29 +103,55 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
     setErrorMessage("");
 
     try {
-      const payload = {
-        channelname: formData.name,
-        description: formData.description,
-        channelImage: formData.channelImage,
-      };
+      let channelImage = formData.channelImage;
+
+      if (selectedImage) {
+        const uploadData = new FormData();
+        uploadData.append("channelImage", selectedImage);
+
+        const uploadResponse = await axiosInstance.patch(
+          `/user/upload-channel-image/${user._id}`,
+          uploadData
+        );
+
+        const uploadResult = uploadResponse.data;
+
+        channelImage =
+          uploadResult?.channelImage ||
+          uploadResult?.user?.channelImage ||
+          uploadResult?.result?.channelImage ||
+          uploadResult?.imageUrl ||
+          uploadResult?.url;
+
+        if (!channelImage) {
+          throw new Error("Channel logo upload did not return an image URL.");
+        }
+      }
 
       const response = await axiosInstance.patch(
         `/user/update/${user._id}`,
-        payload
+        {
+          channelname: formData.name.trim(),
+          description: formData.description,
+          channelImage,
+        }
       );
 
-      login(response?.data);
+      login(response.data);
       onclose();
       router.push(`/channel/${user._id}`);
     } catch (error: any) {
       setErrorMessage(
         error?.response?.data?.message ||
-        "Unable to save your channel. Please try again."
+          error?.message ||
+          "Unable to save your channel. Please try again."
       );
     } finally {
       setisSubmitting(false);
     }
   };
+
+  const displayedImage = previewUrl || formData.channelImage;
 
   return (
     <Dialog open={isopen} onOpenChange={onclose}>
@@ -107,6 +170,7 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
               name="name"
               value={formData.name}
               onChange={handleChange}
+              maxLength={100}
             />
           </div>
 
@@ -123,19 +187,24 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="channelImage">Channel Logo URL</Label>
+            <Label htmlFor="channelImage">Channel Logo</Label>
             <Input
               id="channelImage"
               name="channelImage"
-              value={formData.channelImage}
-              onChange={handleChange}
-              placeholder="https://example.com/neffex-logo.png"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={handleImageChange}
             />
-            {formData.channelImage && (
+
+            <p className="text-xs text-muted-foreground">
+              JPG, PNG, WEBP or GIF. Maximum size: 5 MB.
+            </p>
+
+            {displayedImage && (
               <img
-                src={formData.channelImage}
+                src={displayedImage}
                 alt="Channel logo preview"
-                className="h-16 w-16 rounded-full object-cover"
+                className="h-20 w-20 rounded-full object-cover"
               />
             )}
           </div>
@@ -148,6 +217,7 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
             <Button type="button" variant="outline" onClick={onclose}>
               Cancel
             </Button>
+
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting
                 ? "Saving..."
