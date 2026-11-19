@@ -1,3 +1,4 @@
+
 export type BrowserLocation = {
   city: string;
   state: string;
@@ -8,7 +9,8 @@ export type BrowserLocation = {
 
 export const getBrowserLocation = (): Promise<BrowserLocation | null> =>
   new Promise((resolve) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      console.warn("Geolocation is not supported by this browser.");
       resolve(null);
       return;
     }
@@ -21,6 +23,11 @@ export const getBrowserLocation = (): Promise<BrowserLocation | null> =>
           const response = await fetch(
             `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
           );
+
+          if (!response.ok) {
+            throw new Error("Reverse geocoding request failed");
+          }
+
           const data = await response.json();
 
           resolve({
@@ -28,13 +35,30 @@ export const getBrowserLocation = (): Promise<BrowserLocation | null> =>
             state: data.principalSubdivision || "Unknown",
             country: data.countryName || "Unknown",
             latitude,
-            longitude,
+            longitude
           });
         } catch (error) {
-          resolve(null);
+          console.error("Location lookup failed:", error);
+          resolve({
+            city: "Unknown",
+            state: "Unknown",
+            country: "Unknown",
+            latitude,
+            longitude
+          });
         }
       },
-      () => resolve(null),
-      { timeout: 8000, maximumAge: 600000 }
+      (error) => {
+        console.error("Geolocation error:", {
+          code: error.code,
+          message: error.message
+        });
+        resolve(null);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
     );
   });
