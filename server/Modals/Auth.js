@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 
 const userschema = mongoose.Schema({
   email: { type: String, required: true },
-  firebaseUid: { type: String, default: null, sparse: true },
+  firebaseUid: { type: String, default: undefined },
   isDemoChannel: { type: Boolean, default: false },
   name: { type: String },
   channelname: { type: String },
