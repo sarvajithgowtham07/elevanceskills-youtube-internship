@@ -34,14 +34,9 @@ const index = () => {
 
         const allVideos = await response.json();
 
-        const channelVideos = allVideos.filter((video: any) => {
-          return (
-            video.uploader === user._id ||
-            (user.channelname &&
-              video.videochanel?.toLowerCase() ===
-                user.channelname.toLowerCase())
-          );
-        });
+        const channelVideos = allVideos.filter(
+          (video: any) => video.uploader === user._id
+        );
 
         setVideos(channelVideos);
       } catch (error) {
@@ -72,7 +67,10 @@ const index = () => {
         <Channeltabs />
 
         <div className="px-4 pb-8">
-          <VideoUploader channelId={id} channelName={channel?.channelname} />
+          <VideoUploader
+            channelId={id}
+            channelName={channel?.channelname}
+          />
         </div>
 
         <div className="px-4 pb-8">
