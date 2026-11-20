@@ -69,7 +69,6 @@ const generateAuthenticatedUrl = (publicId) => {
   });
 };
 
-
 export const uploadvideo = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({
@@ -156,7 +155,6 @@ export const uploadvideo = async (req, res) => {
     });
   }
 };
-
 
 export const getallvideo = async (req, res) => {
   try {
@@ -288,7 +286,6 @@ export const getVideoPlayback = async (req, res) => {
   }
 };
 
-
 const getIndiaDayKey = (date = new Date()) => {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -311,21 +308,7 @@ const watchTimeLimits = {
   Silver: 180 * 60,
   Gold: null
 };
-const description = req.body.description || "";
-const file = new video({
-  videotitle: title,
-  description,
-  filename: originalName,
-  filepath,
-  publicId: uploadedAsset.public_id,
-  thumbnail,
-  filetype: "video/mp4",
-  filesize: String(uploadedAsset.bytes),
-  videochanel: req.body.videochanel || "Local Videos",
-  uploader: req.body.uploader || "Local Uploads",
-  accessLevel,
-  qualities
-});
+
 export const recordWatchTime = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -420,4 +403,3 @@ export const recordWatchTime = async (req, res) => {
     return res.status(500).json({ message: "Unable to track watch time" });
   }
 };
-
