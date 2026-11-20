@@ -296,20 +296,38 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: "Verified Google account required" });
     }
 
-    const existingUser = await users.findOne({ email });
+    let user = await users.findOne({
+      firebaseUid: decodedToken.uid,
+      isDemoChannel: { $ne: true },
+    });
 
-    let user;
+    let isNewUser = false;
 
-    if (!existingUser) {
+    if (!user) {
+      user = await users.findOne({
+        email: email.toLowerCase(),
+        isDemoChannel: { $ne: true },
+        $or: [
+          { firebaseUid: null },
+          { firebaseUid: { $exists: false } },
+        ],
+      });
+    }
+
+    if (!user) {
       user = await users.create({
-        email,
+        email: email.toLowerCase(),
+        firebaseUid: decodedToken.uid,
+        isDemoChannel: false,
         name,
         image,
         themeMode: "auto",
         themePreference: getDefaultTheme(),
       });
+
+      isNewUser = true;
     } else {
-      user = existingUser;
+      user.firebaseUid = decodedToken.uid;
 
       if (!user.themeMode) {
         user.themeMode = "auto";
@@ -323,8 +341,9 @@ export const login = async (req, res) => {
 
       if (!user.image) {
         user.image = image;
-        await user.save();
       }
+
+      await user.save();
     }
 
     await syncProfileImage(user, image);
@@ -361,7 +380,7 @@ export const login = async (req, res) => {
         isTrusted: true,
       });
 
-      return res.status(existingUser ? 200 : 201).json({
+      return res.status(isNewUser ? 201 : 200).json({
         result: user,
         token: generateAuthToken(user),
         requiresOTP: false,
@@ -430,7 +449,11 @@ export const verifyLoginOTP = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (user.email.toLowerCase() !== decodedToken.email.toLowerCase()) {
+    if (
+      user.isDemoChannel ||
+      user.email.toLowerCase() !== decodedToken.email.toLowerCase() ||
+      user.firebaseUid !== decodedToken.uid
+    ) {
       return res.status(403).json({
         message: "Firebase account does not match this login",
       });
@@ -631,7 +654,11 @@ export const resendLoginOTP = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (user.email.toLowerCase() !== decodedToken.email.toLowerCase()) {
+    if (
+      user.isDemoChannel ||
+      user.email.toLowerCase() !== decodedToken.email.toLowerCase() ||
+      user.firebaseUid !== decodedToken.uid
+    ) {
       return res.status(403).json({
         message: "Firebase account does not match this login",
       });

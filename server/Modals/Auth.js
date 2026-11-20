@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 
 const userschema = mongoose.Schema({
   email: { type: String, required: true },
+  firebaseUid: { type: String, default: null, sparse: true },
+  isDemoChannel: { type: Boolean, default: false },
   name: { type: String },
   channelname: { type: String },
   channelImage: { type: String, default: "" },
@@ -39,5 +41,10 @@ const userschema = mongoose.Schema({
   },
   joinedon: { type: Date, default: Date.now }
 });
+
+userschema.index(
+  { firebaseUid: 1 },
+  { unique: true, sparse: true }
+);
 
 export default mongoose.model("user", userschema);
