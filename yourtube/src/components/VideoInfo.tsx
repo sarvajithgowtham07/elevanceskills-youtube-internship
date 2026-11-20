@@ -28,6 +28,7 @@ const VideoInfo = ({ video }: any) => {
     setDislikes(video.Dislike || 0);
     setIsLiked(false);
     setIsDisliked(false);
+    setShowFullDescription(false);
   }, [video]);
 
   useEffect(() => {
@@ -55,13 +56,13 @@ const VideoInfo = ({ video }: any) => {
       });
       if (res.data.liked) {
         if (isLiked) {
-          setlikes((prev: any) => prev - 1);
+          setlikes((prev: number) => prev - 1);
           setIsLiked(false);
         } else {
-          setlikes((prev: any) => prev + 1);
+          setlikes((prev: number) => prev + 1);
           setIsLiked(true);
           if (isDisliked) {
-            setDislikes((prev: any) => prev - 1);
+            setDislikes((prev: number) => prev - 1);
             setIsDisliked(false);
           }
         }
@@ -95,13 +96,13 @@ const VideoInfo = ({ video }: any) => {
       });
       if (!res.data.liked) {
         if (isDisliked) {
-          setDislikes((prev: any) => prev - 1);
+          setDislikes((prev: number) => prev - 1);
           setIsDisliked(false);
         } else {
-          setDislikes((prev: any) => prev + 1);
+          setDislikes((prev: number) => prev + 1);
           setIsDisliked(true);
           if (isLiked) {
-            setlikes((prev: any) => prev - 1);
+            setlikes((prev: number) => prev - 1);
             setIsLiked(false);
           }
         }
@@ -154,6 +155,8 @@ const VideoInfo = ({ video }: any) => {
     }
   };
 
+  const description = video?.description || "";
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">{video.videotitle}</h1>
@@ -162,9 +165,9 @@ const VideoInfo = ({ video }: any) => {
         <div className="flex items-center gap-4">
           <Avatar className="w-10 h-10">
             <AvatarImage
-              src={video.channelLogo || video.channelAvatar || video.avatar || ""}
+              src={video.channelImage || undefined}
               alt={`${video.videochanel || "Channel"} logo`}
-              className="object-contain"
+              className="object-cover"
             />
             <AvatarFallback>
               {video.videochanel?.[0]?.toUpperCase() || "C"}
@@ -237,25 +240,35 @@ const VideoInfo = ({ video }: any) => {
           </Button>
         </div>
       </div>
+
       <div className="bg-muted text-foreground rounded-lg p-4">
         <div className="flex gap-4 text-sm font-medium mb-2">
-          <span>{video.views.toLocaleString()} views</span>
-          <span>{formatDistanceToNow(new Date(video.createdAt))} ago</span>
+          <span>{(video.views || 0).toLocaleString()} views</span>
+          <span>
+            {video.createdAt
+              ? `${formatDistanceToNow(new Date(video.createdAt))} ago`
+              : "Recently uploaded"}
+          </span>
         </div>
-        <div className={`text-sm ${showFullDescription ? "" : "line-clamp-3"}`}>
-          <p>
-            Sample video description. This would contain the actual video
-            description from the database.
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-2 p-0 h-auto font-medium"
-          onClick={() => setShowFullDescription(!showFullDescription)}
+
+        <div
+          className={`text-sm whitespace-pre-wrap break-words ${
+            showFullDescription ? "" : "line-clamp-3"
+          }`}
         >
-          {showFullDescription ? "Show less" : "Show more"}
-        </Button>
+          {description || "No description added for this video."}
+        </div>
+
+        {description.length > 0 && description.length > 150 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2 p-0 h-auto font-medium"
+            onClick={() => setShowFullDescription(!showFullDescription)}
+          >
+            {showFullDescription ? "Show less" : "Show more"}
+          </Button>
+        )}
       </div>
     </div>
   );

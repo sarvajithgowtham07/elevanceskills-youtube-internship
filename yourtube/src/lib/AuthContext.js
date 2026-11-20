@@ -43,7 +43,34 @@ export const UserProvider = ({ children }) => {
 
     return totalMinutes >= 300 && totalMinutes < 720 ? "light" : "dark";
   };
+  const uploadChannelImage = async (file) => {
+    if (!user?._id) {
+      throw new Error("Please sign in first");
+    }
 
+    if (!file || !file.type.startsWith("image/")) {
+      throw new Error("Please select a valid image");
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error("Image size must be less than 5 MB");
+    }
+
+    const formData = new FormData();
+    formData.append("channelImage", file);
+
+    const response = await axiosInstance.patch(
+      `/user/upload-channel-image/${user._id}`,
+      formData
+    );
+
+    const updatedUser = response.data.user;
+
+    setUser(updatedUser);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+
+    return updatedUser;
+  };
   const login = (userdata, token) => {
     if (!userdata?._id || !token) {
       throw new Error("Valid user and authentication token are required");
@@ -443,7 +470,8 @@ export const UserProvider = ({ children }) => {
         resendOTP,
         cancelOTP,
         sendPhoneOTP,
-        verifyPhoneOTP
+        verifyPhoneOTP,
+        uploadChannelImage
       }}
     >
       {children}

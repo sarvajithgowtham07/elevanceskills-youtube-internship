@@ -13,6 +13,7 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [accessLevel, setAccessLevel] = useState("Free");
   const [uploadComplete, setUploadComplete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -40,6 +41,7 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
   const resetForm = () => {
     setVideoFile(null);
     setVideoTitle("");
+    setDescription("");
     setAccessLevel("Free");
     setIsUploading(false);
     setUploadProgress(0);
@@ -69,6 +71,7 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
     const formdata = new FormData();
     formdata.append("file", videoFile);
     formdata.append("videotitle", videoTitle.trim());
+    formdata.append("description", description.trim());
     formdata.append("videochanel", channelName);
     formdata.append("uploader", channelId);
     formdata.append("accessLevel", accessLevel);
@@ -166,6 +169,23 @@ const VideoUploader = ({ channelId, channelName, onUploadSuccess }: any) => {
                 disabled={isUploading || uploadComplete}
                 className="mt-1"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="description">Description</Label>
+              <textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, 5000))}
+                placeholder="Tell viewers about your video..."
+                disabled={isUploading || uploadComplete}
+                rows={5}
+                maxLength={5000}
+                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+              <p className="text-xs text-gray-500 mt-1 text-right">
+                {description.length}/5000 characters
+              </p>
             </div>
 
             <div>

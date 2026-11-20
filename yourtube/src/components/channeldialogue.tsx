@@ -16,7 +16,7 @@ import axiosInstance from "@/lib/axiosinstance";
 import { useUser } from "@/lib/AuthContext";
 
 const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
-  const { user, login } = useUser();
+  const { user, login, uploadChannelImage } = useUser();
   const router = useRouter();
 
   const [formData, setFormData] = useState({
@@ -45,8 +45,8 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
       });
     } else {
       setFormData({
-        name: user?.name || "",
-        description: "",
+        name: user?.channelname || user?.name || "",
+        description: user?.description || "",
         channelImage: user?.channelImage || "",
       });
     }
@@ -92,7 +92,7 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
   const handlesubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!user || isSubmitting) return;
+    if (!user?._id || isSubmitting) return;
 
     if (!formData.name.trim()) {
       setErrorMessage("Channel name is required.");
@@ -103,28 +103,11 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
     setErrorMessage("");
 
     try {
-      let channelImage = formData.channelImage;
-
       if (selectedImage) {
-        const uploadData = new FormData();
-        uploadData.append("channelImage", selectedImage);
+        const updatedUser = await uploadChannelImage(selectedImage);
 
-        const uploadResponse = await axiosInstance.patch(
-          `/user/upload-channel-image/${user._id}`,
-          uploadData
-        );
-
-        const uploadResult = uploadResponse.data;
-
-        channelImage =
-          uploadResult?.channelImage ||
-          uploadResult?.user?.channelImage ||
-          uploadResult?.result?.channelImage ||
-          uploadResult?.imageUrl ||
-          uploadResult?.url;
-
-        if (!channelImage) {
-          throw new Error("Channel logo upload did not return an image URL.");
+        if (!updatedUser?.channelImage) {
+          throw new Error("Channel logo upload failed.");
         }
       }
 
@@ -133,11 +116,22 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
         {
           channelname: formData.name.trim(),
           description: formData.description,
-          channelImage,
         }
       );
 
-      login(response.data);
+      const updatedUser = response.data.result || response.data.user || response.data;
+
+      if (!updatedUser?._id) {
+        throw new Error("Channel details could not be updated.");
+      }
+
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        throw new Error("Authentication token not found. Please sign in again.");
+      }
+
+      login(updatedUser, token);
       onclose();
       router.push(`/channel/${user._id}`);
     } catch (error: any) {
@@ -151,7 +145,7 @@ const Channeldialogue = ({ isopen, onclose, channeldata, mode }: any) => {
     }
   };
 
-  const displayedImage = previewUrl || formData.channelImage;
+  const displayedImage = previewUrl || formData.channelImage || user?.channelImage;
 
   return (
     <Dialog open={isopen} onOpenChange={onclose}>

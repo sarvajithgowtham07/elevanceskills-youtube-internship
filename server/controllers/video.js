@@ -69,6 +69,7 @@ const generateAuthenticatedUrl = (publicId) => {
   });
 };
 
+
 export const uploadvideo = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({
@@ -82,6 +83,7 @@ export const uploadvideo = async (req, res) => {
   try {
     const originalName = req.file.originalname;
     const title = req.body.videotitle || path.parse(originalName).name;
+    const description = req.body.description || "";
     accessLevel = req.body.accessLevel || "Free";
 
     if (!["Free", "Bronze", "Silver", "Gold"].includes(accessLevel)) {
@@ -115,6 +117,7 @@ export const uploadvideo = async (req, res) => {
 
     const file = new video({
       videotitle: title,
+      description,
       filename: originalName,
       filepath,
       publicId: uploadedAsset.public_id,
@@ -131,7 +134,8 @@ export const uploadvideo = async (req, res) => {
 
     return res.status(201).json({
       message: "Video uploaded successfully",
-      thumbnail
+      thumbnail,
+      video: file
     });
   } catch (error) {
     console.error("Video upload error:", error);
@@ -152,6 +156,7 @@ export const uploadvideo = async (req, res) => {
     });
   }
 };
+
 
 export const getallvideo = async (req, res) => {
   try {
@@ -306,7 +311,21 @@ const watchTimeLimits = {
   Silver: 180 * 60,
   Gold: null
 };
-
+const description = req.body.description || "";
+const file = new video({
+  videotitle: title,
+  description,
+  filename: originalName,
+  filepath,
+  publicId: uploadedAsset.public_id,
+  thumbnail,
+  filetype: "video/mp4",
+  filesize: String(uploadedAsset.bytes),
+  videochanel: req.body.videochanel || "Local Videos",
+  uploader: req.body.uploader || "Local Uploads",
+  accessLevel,
+  qualities
+});
 export const recordWatchTime = async (req, res) => {
   try {
     const userId = req.user.id;
