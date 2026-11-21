@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import {
   LiveKitRoom,
-  VideoConference
+  VideoConference,
+  useRoomContext
 } from "@livekit/components-react";
 import { useUser } from "@/lib/AuthContext";
 import axiosInstance from "@/lib/axiosinstance";
@@ -29,7 +30,68 @@ interface MeetingConnection {
   serverUrl: string;
   role: string;
 }
+function CameraSwitchButton() {
+  const room = useRoomContext();
+  const [switching, setSwitching] = useState(false);
 
+  const switchCamera = async () => {
+    if (switching) return;
+
+    try {
+      setSwitching(true);
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter(
+        device => device.kind === "videoinput"
+      );
+
+      if (cameras.length < 2) return;
+
+      const activeDevice = await room.getActiveDevice("videoinput");
+      const currentIndex = cameras.findIndex(
+        device => device.deviceId === activeDevice
+      );
+
+      const nextIndex = (currentIndex + 1) % cameras.length;
+
+      await room.switchActiveDevice(
+        "videoinput",
+        cameras[nextIndex].deviceId
+      );
+    } catch (error) {
+      console.error("Camera switch error:", error);
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={switchCamera}
+      disabled={switching}
+      aria-label="Switch camera"
+      title="Switch front/rear camera"
+      className="absolute bottom-24 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-gray-800/90 text-white shadow-lg backdrop-blur transition hover:bg-gray-700 active:scale-95 disabled:opacity-50 md:hidden"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="21"
+        height="21"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M23 7l-7 5 7 5V7z" />
+        <rect x="1" y="5" width="15" height="14" rx="2" />
+        <path d="M8 2l3 3-3 3" />
+      </svg>
+    </button>
+  );
+}
 export default function VideoCall() {
   const { user } = useUser();
 
@@ -641,7 +703,10 @@ export default function VideoCall() {
                 }}
                 className="h-[70vh] bg-gray-950"
               >
-                <VideoConference />
+                <div className="relative h-full w-full">
+                  <VideoConference />
+                  <CameraSwitchButton />
+                </div>
               </LiveKitRoom>
             </div>
           </section>
