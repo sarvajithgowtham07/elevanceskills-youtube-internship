@@ -2,6 +2,7 @@ import express from "express";
 import { randomUUID } from "crypto";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import verifyToken from "../middleware/authMiddleware.js";
+import users from "../Modals/Auth.js";
 
 const routes = express.Router();
 
@@ -26,7 +27,7 @@ const getConfig = () => {
   };
 };
 
-const generateToken = async (identity, roomName, isHost = false) => {
+const generateToken = async (identity, roomName, isHost = false, participantName = "User") => {
   const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = getConfig();
 
   const accessToken = new AccessToken(
@@ -34,6 +35,7 @@ const generateToken = async (identity, roomName, isHost = false) => {
     LIVEKIT_API_SECRET,
     {
       identity,
+      name: participantName,
       ttl: "15m"
     }
   );
@@ -53,6 +55,17 @@ const generateToken = async (identity, roomName, isHost = false) => {
 routes.post("/create", verifyToken, async (req, res) => {
   try {
     const { LIVEKIT_URL, roomService } = getConfig();
+
+    const user = await users.findById(req.user.id).select("name channelname");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const participantName = user.channelname || user.name || "User";
     const roomName = `yt-${randomUUID()}`;
 
     await roomService.createRoom({
@@ -69,7 +82,8 @@ routes.post("/create", verifyToken, async (req, res) => {
     const token = await generateToken(
       req.user.id,
       roomName,
-      true
+      true,
+      participantName
     );
 
     res.status(201).json({
@@ -153,10 +167,22 @@ routes.post("/token", verifyToken, async (req, res) => {
       });
     }
 
+    const user = await users.findById(req.user.id).select("name channelname");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const participantName = user.channelname || user.name || "User";
+
     const token = await generateToken(
       req.user.id,
       roomName,
-      isHost
+      isHost,
+      participantName
     );
 
     res.json({
