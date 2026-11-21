@@ -85,13 +85,14 @@ routes.post("/create", verifyToken, async (req, res) => {
   }
 });
 
+
 routes.post("/token", verifyToken, async (req, res) => {
   try {
     const { roomName } = req.body;
 
     if (
       typeof roomName !== "string" ||
-      !/^yt-[0-9a-f-]{36}$/.test(roomName)
+      !/^yt-[0-9a-f-]{36}$/i.test(roomName)
     ) {
       return res.status(400).json({
         success: false,
@@ -109,9 +110,49 @@ routes.post("/token", verifyToken, async (req, res) => {
       });
     }
 
+    let metadata;
+
+    try {
+      metadata = JSON.parse(rooms[0].metadata || "{}");
+    } catch {
+      return res.status(403).json({
+        success: false,
+        message: "Meeting authorization failed"
+      });
+    }
+
+    if (!metadata.hostId) {
+      return res.status(403).json({
+        success: false,
+        message: "Meeting authorization failed"
+      });
+    }
+
+    const isHost = metadata.hostId === req.user.id;
+    const participants = await roomService.listParticipants(roomName);
+
+    if (
+      participants.some(
+        (participant) => participant.identity === req.user.id
+      )
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: "You are already connected to this meeting"
+      });
+    }
+
+    if (participants.length >= 10) {
+      return res.status(409).json({
+        success: false,
+        message: "Meeting is full"
+      });
+    }
+
     const token = await generateToken(
       req.user.id,
-      roomName
+      roomName,
+      isHost
     );
 
     res.json({
@@ -119,7 +160,7 @@ routes.post("/token", verifyToken, async (req, res) => {
       roomName,
       token,
       serverUrl: LIVEKIT_URL,
-      role: "participant"
+      role: isHost ? "host" : "participant"
     });
   } catch (error) {
     console.error("LiveKit token error:", error.message);
@@ -130,5 +171,6 @@ routes.post("/token", verifyToken, async (req, res) => {
     });
   }
 });
+
 
 export default routes;

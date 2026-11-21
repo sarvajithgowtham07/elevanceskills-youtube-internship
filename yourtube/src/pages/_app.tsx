@@ -1,8 +1,10 @@
+
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import OTPVerification from "@/components/OTPVerification";
 import { Toaster } from "@/components/ui/sonner";
 import "@/styles/globals.css";
+import "@livekit/components-styles";
 import type { AppProps } from "next/app";
 import { UserProvider } from "../lib/AuthContext";
 
