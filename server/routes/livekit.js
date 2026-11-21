@@ -146,7 +146,15 @@ routes.post("/token", verifyToken, async (req, res) => {
       });
     }
 
-    const isHost = metadata.hostId === req.user.id;
+    const isHost = String(metadata.hostId) === String(req.user.id);
+
+    if (metadata.locked && !isHost) {
+      return res.status(403).json({
+        success: false,
+        message: "This meeting is locked by the host"
+      });
+    }
+
     const participants = await roomService.listParticipants(roomName);
 
     if (
@@ -257,6 +265,144 @@ routes.post("/end", verifyToken, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Unable to end meeting"
+    });
+  }
+});
+
+routes.post("/moderate", verifyToken, async (req, res) => {
+  try {
+    const { roomName, action, identity } = req.body;
+
+    if (
+      typeof roomName !== "string" ||
+      !/^yt-[0-9a-f-]{36}$/i.test(roomName)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid meeting room"
+      });
+    }
+
+    const allowedActions = ["mute", "unmute", "remove", "lock", "unlock"];
+
+    if (!allowedActions.includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid moderation action"
+      });
+    }
+
+    const { roomService } = getConfig();
+    const rooms = await roomService.listRooms([roomName]);
+
+    if (!rooms.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Meeting not found"
+      });
+    }
+
+    let metadata;
+
+    try {
+      metadata = JSON.parse(rooms[0].metadata || "{}");
+    } catch {
+      return res.status(403).json({
+        success: false,
+        message: "Meeting authorization failed"
+      });
+    }
+
+    if (String(metadata.hostId) !== String(req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only the host can moderate this meeting"
+      });
+    }
+
+    if (action === "lock" || action === "unlock") {
+      metadata.locked = action === "lock";
+
+      await roomService.updateRoomMetadata(
+        roomName,
+        JSON.stringify(metadata)
+      );
+
+      return res.json({
+        success: true,
+        locked: metadata.locked,
+        message: metadata.locked
+          ? "Meeting locked"
+          : "Meeting unlocked"
+      });
+    }
+
+    if (
+      typeof identity !== "string" ||
+      !identity.trim() ||
+      identity === String(req.user.id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid participant"
+      });
+    }
+
+    const participants = await roomService.listParticipants(roomName);
+    const participant = participants.find(
+      item => item.identity === identity
+    );
+
+    if (!participant) {
+      return res.status(404).json({
+        success: false,
+        message: "Participant not found"
+      });
+    }
+
+    if (action === "remove") {
+      await roomService.removeParticipant(roomName, identity);
+
+      return res.json({
+        success: true,
+        message: "Participant removed"
+      });
+    }
+
+    const audioTracks = (participant.tracks || []).filter(
+      track =>
+        track.type === "AUDIO" ||
+        Number(track.type) === 0
+    );
+
+    if (!audioTracks.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Participant has no published microphone track"
+      });
+    }
+
+    for (const track of audioTracks) {
+      await roomService.mutePublishedTrack(
+        roomName,
+        identity,
+        track.sid,
+        action === "mute"
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: action === "mute"
+        ? "Participant muted"
+        : "Participant unmuted"
+    });
+  } catch (error) {
+    console.error("Meeting moderation error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Moderation action failed"
     });
   }
 });

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -6,10 +5,12 @@ import { io, Socket } from "socket.io-client";
 import {
   LiveKitRoom,
   VideoConference,
-  useRoomContext
+  useRoomContext,
+  useParticipants
 } from "@livekit/components-react";
 import { useUser } from "@/lib/AuthContext";
 import axiosInstance from "@/lib/axiosinstance";
+import { RoomEvent } from "livekit-client";
 
 interface SearchUser {
   _id: string;
@@ -90,6 +91,213 @@ function CameraSwitchButton() {
         <path d="M8 2l3 3-3 3" />
       </svg>
     </button>
+  );
+}
+function ParticipantList({
+  isHost,
+  roomName
+}: {
+  isHost: boolean;
+  roomName: string;
+}) {
+  const participants = useParticipants();
+  const room = useRoomContext();
+  const [locked, setLocked] = useState(false);
+  const [busyKey, setBusyKey] = useState("");
+  const [notice, setNotice] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const readLocked = () => {
+      try {
+        const metadata = JSON.parse(room.metadata || "{}");
+        setLocked(Boolean(metadata.locked));
+      } catch {
+        setLocked(false);
+      }
+    };
+
+    readLocked();
+    room.on(RoomEvent.RoomMetadataChanged, readLocked);
+
+    return () => {
+      room.off(RoomEvent.RoomMetadataChanged, readLocked);
+    };
+  }, [room]);
+
+  const moderate = async (
+    action: "mute" | "unmute" | "remove" | "lock" | "unlock",
+    identity?: string
+  ) => {
+    const key = `${action}:${identity || "room"}`;
+
+    setBusyKey(key);
+    setNotice(null);
+
+    try {
+      const response = await axiosInstance.post("/livekit/moderate", {
+        roomName,
+        action,
+        identity
+      });
+
+      if (typeof response.data?.locked === "boolean") {
+        setLocked(response.data.locked);
+      }
+
+      setNotice({
+        type: "success",
+        text: response.data?.message || "Action completed"
+      });
+    } catch (error: any) {
+      setNotice({
+        type: "error",
+        text: error?.response?.data?.message || "Moderation action failed"
+      });
+    } finally {
+      setBusyKey("");
+    }
+  };
+
+  return (
+    <aside className="w-full rounded-xl border border-gray-700 bg-gray-900 p-4 lg:w-[280px] lg:shrink-0">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="font-semibold text-white">Participants</h3>
+        <span className="rounded-full bg-blue-600/20 px-3 py-1 text-sm text-blue-400">
+          {participants.length}
+        </span>
+      </div>
+
+      {isHost ? (
+        <button
+          type="button"
+          onClick={() => moderate(locked ? "unlock" : "lock")}
+          disabled={busyKey !== ""}
+          className="mb-4 w-full rounded-lg bg-gray-700 px-3 py-2 text-sm font-medium text-white hover:bg-gray-600 disabled:opacity-50"
+        >
+          {locked ? "🔒 Meeting locked - Unlock" : "🔓 Lock meeting"}
+        </button>
+      ) : (
+        locked && (
+          <p className="mb-4 rounded-lg bg-gray-800 px-3 py-2 text-center text-xs text-yellow-400">
+            🔒 Meeting is locked by the host
+          </p>
+        )
+      )}
+
+      {notice && (
+        <p
+          className={`mb-3 text-xs ${notice.type === "success" ? "text-green-400" : "text-red-400"
+            }`}
+          role="status"
+        >
+          {notice.text}
+        </p>
+      )}
+
+      <div className="space-y-3">
+        {participants.map((participant) => {
+          const isYou =
+            participant.identity === room.localParticipant.identity;
+
+          return (
+            <div
+              key={participant.identity}
+              className="flex items-center justify-between gap-2 rounded-lg bg-gray-800 p-3"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">
+                  {participant.name || participant.identity}
+                  {isYou && (
+                    <span className="ml-2 text-xs text-blue-400">
+                      You
+                    </span>
+                  )}
+                </p>
+
+                <p
+                  className={`mt-1 text-xs ${participant.isSpeaking
+                    ? "text-green-400"
+                    : "text-gray-400"
+                    }`}
+                >
+                  {participant.isSpeaking ? "Speaking" : "Not speaking"}
+                </p>
+
+                {isHost && !isYou && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        moderate(
+                          participant.isMicrophoneEnabled ? "mute" : "unmute",
+                          participant.identity
+                        )
+                      }
+                      disabled={busyKey !== ""}
+                      className="rounded bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
+                    >
+                      {participant.isMicrophoneEnabled ? "Mute" : "Unmute"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Remove ${participant.name || "this participant"} from the meeting?`
+                          )
+                        ) {
+                          void moderate("remove", participant.identity);
+                        }
+                      }}
+                      disabled={busyKey !== ""}
+                      className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <span
+                  title={
+                    participant.isMicrophoneEnabled
+                      ? "Microphone on"
+                      : "Microphone muted"
+                  }
+                  className={
+                    participant.isMicrophoneEnabled
+                      ? "text-green-400"
+                      : "text-red-400"
+                  }
+                >
+                  {participant.isMicrophoneEnabled ? "🎙️" : "🔇"}
+                </span>
+
+                <span
+                  title={
+                    participant.isCameraEnabled
+                      ? "Camera on"
+                      : "Camera off"
+                  }
+                  className={
+                    participant.isCameraEnabled
+                      ? "text-green-400"
+                      : "text-red-400"
+                  }
+                >
+                  {participant.isCameraEnabled ? "📹" : "🚫"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </aside>
   );
 }
 export default function VideoCall() {
@@ -703,9 +911,16 @@ export default function VideoCall() {
                 }}
                 className="h-[70vh] bg-gray-950"
               >
-                <div className="relative h-full w-full">
-                  <VideoConference />
-                  <CameraSwitchButton />
+                <div className="grid h-full grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+                  <div className="relative min-h-[55vh] overflow-hidden rounded-lg">
+                    <VideoConference />
+                    <CameraSwitchButton />
+                  </div>
+
+                  <ParticipantList
+                    isHost={connection.role === "host"}
+                    roomName={connection.roomName}
+                  />
                 </div>
               </LiveKitRoom>
             </div>
