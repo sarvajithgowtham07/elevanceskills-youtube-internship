@@ -59,7 +59,11 @@ routes.post("/create", verifyToken, async (req, res) => {
       name: roomName,
       emptyTimeout: 600,
       departureTimeout: 30,
-      maxParticipants: 10
+      maxParticipants: 10,
+      metadata: JSON.stringify({
+        hostId: String(req.user.id),
+        createdAt: new Date().toISOString()
+      })
     });
 
     const token = await generateToken(
