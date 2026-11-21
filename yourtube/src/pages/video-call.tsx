@@ -190,28 +190,49 @@ export default function VideoCall() {
     );
   }, []);
 
-  const closeCall = useCallback(() => {
+
+  const closeCall = useCallback(async () => {
     const roomName = roomRef.current;
 
-    if (roomName && socketRef.current?.connected) {
-      socketRef.current.emit("end-call", {
-        roomId: roomName
+    if (!roomName) return;
+
+    try {
+      setLoading(true);
+      setStatus("Ending meeting for everyone...");
+
+      await axiosInstance.post("/livekit/end", {
+        roomName
       });
+
+      if (socketRef.current?.connected) {
+        socketRef.current.emit("end-call", {
+          roomId: roomName
+        });
+      }
+
+      roomRef.current = "";
+      pendingMeetingRef.current = null;
+
+      setConnection(null);
+      setShareUrl("");
+      setStatus("Meeting ended for everyone.");
+
+      window.history.replaceState(
+        {},
+        "",
+        window.location.pathname
+      );
+    } catch (error: any) {
+      console.error("End meeting error:", error);
+
+      setStatus(
+        error.response?.data?.message || "Unable to end meeting."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    roomRef.current = "";
-    pendingMeetingRef.current = null;
-
-    setConnection(null);
-    setShareUrl("");
-    setStatus("Call ended.");
-
-    window.history.replaceState(
-      {},
-      "",
-      window.location.pathname
-    );
   }, []);
+
 
   useEffect(() => {
     if (!user) return;
@@ -582,9 +603,10 @@ export default function VideoCall() {
 
                 <button
                   onClick={connection.role === "host" ? closeCall : leaveMeeting}
-                  className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg"
+                  disabled={loading}
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 rounded-lg"
                 >
-                  {connection.role === "host" ? "End Call" : "Leave Meeting"}
+                  {connection.role === "host" ? "End Meeting" : "Leave Meeting"}
                 </button>
               </div>
             </div>

@@ -203,4 +203,62 @@ routes.post("/token", verifyToken, async (req, res) => {
 });
 
 
+routes.post("/end", verifyToken, async (req, res) => {
+  try {
+    const { roomName } = req.body;
+
+    if (
+      typeof roomName !== "string" ||
+      !/^yt-[0-9a-f-]{36}$/i.test(roomName)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid meeting room"
+      });
+    }
+
+    const { roomService } = getConfig();
+    const rooms = await roomService.listRooms([roomName]);
+
+    if (!rooms.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Meeting not found or already ended"
+      });
+    }
+
+    let metadata;
+
+    try {
+      metadata = JSON.parse(rooms[0].metadata || "{}");
+    } catch {
+      return res.status(403).json({
+        success: false,
+        message: "Meeting authorization failed"
+      });
+    }
+
+    if (String(metadata.hostId) !== String(req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only the host can end this meeting"
+      });
+    }
+
+    await roomService.deleteRoom(roomName);
+
+    return res.json({
+      success: true,
+      message: "Meeting ended for everyone"
+    });
+  } catch (error) {
+    console.error("LiveKit meeting end error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to end meeting"
+    });
+  }
+});
+
 export default routes;
