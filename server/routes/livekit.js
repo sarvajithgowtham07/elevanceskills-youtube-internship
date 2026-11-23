@@ -398,7 +398,12 @@ routes.post("/moderate", verifyToken, async (req, res) => {
         : "Participant unmuted"
     });
   } catch (error) {
-    console.error("Meeting moderation error:", error.message);
+    console.error("Meeting moderation error:", {
+      message: error.message,
+      code: error.code,
+      status: error.status,
+      response: error.response
+    });
 
     return res.status(500).json({
       success: false,
