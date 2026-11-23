@@ -131,30 +131,49 @@ function ParticipantList({
   }, [room]);
 
 
-  useEffect(() => {
-    const syncRaisedHands = () => {
-      const updated: Record<string, boolean> = {};
+  
+useEffect(() => {
+  const syncRaisedHands = () => {
+    const updated: Record<string, boolean> = {};
 
-      participants.forEach(participant => {
-        updated[participant.identity] =
-          participant.attributes.handRaised === "true";
-      });
+    room.remoteParticipants.forEach(participant => {
+      updated[participant.identity] =
+        participant.attributes.handRaised === "true";
+    });
 
-      setRaisedHands(updated);
-    };
+    updated[room.localParticipant.identity] =
+      room.localParticipant.attributes.handRaised === "true";
 
-    syncRaisedHands();
+    setRaisedHands(updated);
+  };
 
-    room.on(RoomEvent.ParticipantAttributesChanged, syncRaisedHands);
-    room.on(RoomEvent.ParticipantConnected, syncRaisedHands);
-    room.on(RoomEvent.ParticipantDisconnected, syncRaisedHands);
+  const handleAttributesChanged = (
+    changedAttributes: Record<string, string>,
+    participant: any
+  ) => {
+    console.log("Hand status received:", participant.identity, changedAttributes);
 
-    return () => {
-      room.off(RoomEvent.ParticipantAttributesChanged, syncRaisedHands);
-      room.off(RoomEvent.ParticipantConnected, syncRaisedHands);
-      room.off(RoomEvent.ParticipantDisconnected, syncRaisedHands);
-    };
-  }, [room, participants]);
+    if (typeof changedAttributes.handRaised === "undefined") return;
+
+    setRaisedHands(prev => ({
+      ...prev,
+      [participant.identity]: changedAttributes.handRaised === "true"
+    }));
+  };
+
+  syncRaisedHands();
+
+  room.on(RoomEvent.ParticipantAttributesChanged, handleAttributesChanged);
+  room.on(RoomEvent.ParticipantConnected, syncRaisedHands);
+  room.on(RoomEvent.ParticipantDisconnected, syncRaisedHands);
+
+  return () => {
+    room.off(RoomEvent.ParticipantAttributesChanged, handleAttributesChanged);
+    room.off(RoomEvent.ParticipantConnected, syncRaisedHands);
+    room.off(RoomEvent.ParticipantDisconnected, syncRaisedHands);
+  };
+}, [room]);
+
 
 
   const toggleRaiseHand = async () => {
