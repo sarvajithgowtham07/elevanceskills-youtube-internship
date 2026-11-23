@@ -40,14 +40,17 @@ const generateToken = async (identity, roomName, isHost = false, participantName
     }
   );
 
+
   accessToken.addGrant({
     roomJoin: true,
     room: roomName,
     canPublish: true,
     canSubscribe: true,
     canPublishData: true,
+    canUpdateOwnMetadata: !isHost,
     ...(isHost ? { roomAdmin: true } : {})
   });
+
 
   return await accessToken.toJwt();
 };
