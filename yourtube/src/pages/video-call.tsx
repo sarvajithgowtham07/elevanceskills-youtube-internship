@@ -131,48 +131,52 @@ function ParticipantList({
   }, [room]);
 
 
-  
-useEffect(() => {
-  const syncRaisedHands = () => {
-    const updated: Record<string, boolean> = {};
 
-    room.remoteParticipants.forEach(participant => {
-      updated[participant.identity] =
-        participant.attributes.handRaised === "true";
-    });
+  useEffect(() => {
+    const syncRaisedHands = () => {
+      const updated: Record<string, boolean> = {};
 
-    updated[room.localParticipant.identity] =
-      room.localParticipant.attributes.handRaised === "true";
+      room.remoteParticipants.forEach(participant => {
+        updated[participant.identity] =
+          participant.attributes.handRaised === "true";
+      });
 
-    setRaisedHands(updated);
-  };
+      updated[room.localParticipant.identity] =
+        room.localParticipant.attributes.handRaised === "true";
 
-  const handleAttributesChanged = (
-    changedAttributes: Record<string, string>,
-    participant: any
-  ) => {
-    console.log("Hand status received:", participant.identity, changedAttributes);
+      setRaisedHands(updated);
+    };
 
-    if (typeof changedAttributes.handRaised === "undefined") return;
+    const handleAttributesChanged = (
+      changedAttributes: Record<string, string>,
+      participant: any
+    ) => {
+      console.log("RAISE HAND DEBUG:", {
+        identity: participant.identity,
+        changedAttributes: JSON.stringify(changedAttributes),
+        allAttributes: JSON.stringify(participant.attributes)
+      });
 
-    setRaisedHands(prev => ({
-      ...prev,
-      [participant.identity]: changedAttributes.handRaised === "true"
-    }));
-  };
+      if (typeof changedAttributes.handRaised === "undefined") return;
 
-  syncRaisedHands();
+      setRaisedHands(prev => ({
+        ...prev,
+        [participant.identity]: changedAttributes.handRaised === "true"
+      }));
+    };
 
-  room.on(RoomEvent.ParticipantAttributesChanged, handleAttributesChanged);
-  room.on(RoomEvent.ParticipantConnected, syncRaisedHands);
-  room.on(RoomEvent.ParticipantDisconnected, syncRaisedHands);
+    syncRaisedHands();
 
-  return () => {
-    room.off(RoomEvent.ParticipantAttributesChanged, handleAttributesChanged);
-    room.off(RoomEvent.ParticipantConnected, syncRaisedHands);
-    room.off(RoomEvent.ParticipantDisconnected, syncRaisedHands);
-  };
-}, [room]);
+    room.on(RoomEvent.ParticipantAttributesChanged, handleAttributesChanged);
+    room.on(RoomEvent.ParticipantConnected, syncRaisedHands);
+    room.on(RoomEvent.ParticipantDisconnected, syncRaisedHands);
+
+    return () => {
+      room.off(RoomEvent.ParticipantAttributesChanged, handleAttributesChanged);
+      room.off(RoomEvent.ParticipantConnected, syncRaisedHands);
+      room.off(RoomEvent.ParticipantDisconnected, syncRaisedHands);
+    };
+  }, [room]);
 
 
 
@@ -263,8 +267,8 @@ useEffect(() => {
           type="button"
           onClick={toggleRaiseHand}
           className={`mb-4 w-full rounded-lg px-3 py-2 text-sm font-medium text-white ${raisedHands[room.localParticipant.identity]
-              ? "bg-yellow-600 hover:bg-yellow-700"
-              : "bg-blue-600 hover:bg-blue-700"
+            ? "bg-yellow-600 hover:bg-yellow-700"
+            : "bg-blue-600 hover:bg-blue-700"
             }`}
         >
           {raisedHands[room.localParticipant.identity]
