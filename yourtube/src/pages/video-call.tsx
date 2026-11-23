@@ -6,7 +6,8 @@ import {
   LiveKitRoom,
   VideoConference,
   useRoomContext,
-  useParticipants
+  useParticipants,
+  useSpeakingParticipants
 } from "@livekit/components-react";
 import { useUser } from "@/lib/AuthContext";
 import axiosInstance from "@/lib/axiosinstance";
@@ -101,6 +102,7 @@ function ParticipantList({
   roomName: string;
 }) {
   const participants = useParticipants();
+  const activeSpeakers = useSpeakingParticipants();
   const room = useRoomContext();
   const [locked, setLocked] = useState(false);
   const [busyKey, setBusyKey] = useState("");
@@ -201,6 +203,9 @@ function ParticipantList({
         {participants.map((participant) => {
           const isYou =
             participant.identity === room.localParticipant.identity;
+          const isSpeaking = activeSpeakers.some(
+            speaker => speaker.identity === participant.identity
+          );
 
           return (
             <div
@@ -218,12 +223,10 @@ function ParticipantList({
                 </p>
 
                 <p
-                  className={`mt-1 text-xs ${participant.isSpeaking
-                    ? "text-green-400"
-                    : "text-gray-400"
+                  className={`mt-1 text-xs ${isSpeaking ? "text-green-400" : "text-gray-400"
                     }`}
                 >
-                  {participant.isSpeaking ? "Speaking" : "Not speaking"}
+                  {isSpeaking ? "Speaking" : "Not speaking"}
                 </p>
 
                 {isHost && !isYou && (
