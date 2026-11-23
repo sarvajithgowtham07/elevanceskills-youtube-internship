@@ -106,6 +106,7 @@ function ParticipantList({
   const room = useRoomContext();
   const [locked, setLocked] = useState(false);
   const [busyKey, setBusyKey] = useState("");
+  const [raisedHands, setRaisedHands] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState<{
     type: "success" | "error";
     text: string;
@@ -128,6 +129,56 @@ function ParticipantList({
       room.off(RoomEvent.RoomMetadataChanged, readLocked);
     };
   }, [room]);
+
+  useEffect(() => {
+    const syncRaisedHands = () => {
+      const updated: Record<string, boolean> = {};
+
+      room.remoteParticipants.forEach(participant => {
+        updated[participant.identity] =
+          participant.attributes.handRaised === "true";
+      });
+
+      updated[room.localParticipant.identity] =
+        room.localParticipant.attributes.handRaised === "true";
+
+      setRaisedHands(updated);
+    };
+
+    syncRaisedHands();
+
+    room.on(RoomEvent.ParticipantAttributesChanged, syncRaisedHands);
+    room.on(RoomEvent.ParticipantConnected, syncRaisedHands);
+    room.on(RoomEvent.ParticipantDisconnected, syncRaisedHands);
+
+    return () => {
+      room.off(RoomEvent.ParticipantAttributesChanged, syncRaisedHands);
+      room.off(RoomEvent.ParticipantConnected, syncRaisedHands);
+      room.off(RoomEvent.ParticipantDisconnected, syncRaisedHands);
+    };
+  }, [room]);
+
+  const toggleRaiseHand = async () => {
+    const identity = room.localParticipant.identity;
+    const next = !raisedHands[identity];
+
+    try {
+      await room.localParticipant.setAttributes({
+        handRaised: next ? "true" : "false"
+      });
+
+      setRaisedHands(prev => ({
+        ...prev,
+        [identity]: next
+      }));
+    } catch (error) {
+      console.error("Raise hand error:", error);
+      setNotice({
+        type: "error",
+        text: "Unable to update your raised hand status."
+      });
+    }
+  };
 
   const moderate = async (
     action: "mute" | "unmute" | "remove" | "lock" | "unlock",
@@ -189,6 +240,22 @@ function ParticipantList({
         )
       )}
 
+      {!isHost && (
+        <button
+          type="button"
+          onClick={toggleRaiseHand}
+          className={`mb-4 w-full rounded-lg px-3 py-2 text-sm font-medium text-white ${
+            raisedHands[room.localParticipant.identity]
+              ? "bg-yellow-600 hover:bg-yellow-700"
+              : "bg-blue-600 hover:bg-blue-700"
+          }`}
+        >
+          {raisedHands[room.localParticipant.identity]
+            ? "✋ Lower Hand"
+            : "✋ Raise Hand"}
+        </button>
+      )}
+
       {notice && (
         <p
           className={`mb-3 text-xs ${notice.type === "success" ? "text-green-400" : "text-red-400"
@@ -215,6 +282,11 @@ function ParticipantList({
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-white">
                   {participant.name || participant.identity}
+                  {raisedHands[participant.identity] && (
+                    <span className="ml-2 text-yellow-400" title="Hand raised">
+                      ✋
+                    </span>
+                  )}
                   {isYou && (
                     <span className="ml-2 text-xs text-blue-400">
                       You
