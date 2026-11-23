@@ -294,6 +294,11 @@ function ParticipantList({
           const isSpeaking = activeSpeakers.some(
             speaker => speaker.identity === participant.identity
           );
+          console.log("RENDER HAND:", {
+            identity: participant.identity,
+            raisedHand: raisedHands[participant.identity],
+            attributes: participant.attributes
+          });
 
           return (
             <div
