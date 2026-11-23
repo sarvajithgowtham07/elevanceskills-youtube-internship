@@ -306,19 +306,26 @@ function ParticipantList({
               className="flex items-center justify-between gap-2 rounded-lg bg-gray-800 p-3"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-white">
-                  {participant.name || participant.identity}
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm font-medium text-white">
+                    {participant.name || participant.identity}
+                  </span>
+
                   {raisedHands[participant.identity] && (
-                    <span className="ml-2 text-yellow-400" title="Hand raised">
+                    <span
+                      className="shrink-0 text-yellow-400"
+                      title="Hand raised"
+                    >
                       ✋
                     </span>
                   )}
+
                   {isYou && (
-                    <span className="ml-2 text-xs text-blue-400">
+                    <span className="shrink-0 text-xs text-blue-400">
                       You
                     </span>
                   )}
-                </p>
+                </div>
 
                 <p
                   className={`mt-1 text-xs ${isSpeaking ? "text-green-400" : "text-gray-400"
