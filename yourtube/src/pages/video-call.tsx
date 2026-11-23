@@ -130,17 +130,15 @@ function ParticipantList({
     };
   }, [room]);
 
+
   useEffect(() => {
     const syncRaisedHands = () => {
       const updated: Record<string, boolean> = {};
 
-      room.remoteParticipants.forEach(participant => {
+      participants.forEach(participant => {
         updated[participant.identity] =
           participant.attributes.handRaised === "true";
       });
-
-      updated[room.localParticipant.identity] =
-        room.localParticipant.attributes.handRaised === "true";
 
       setRaisedHands(updated);
     };
@@ -156,7 +154,8 @@ function ParticipantList({
       room.off(RoomEvent.ParticipantConnected, syncRaisedHands);
       room.off(RoomEvent.ParticipantDisconnected, syncRaisedHands);
     };
-  }, [room]);
+  }, [room, participants]);
+
 
   const toggleRaiseHand = async () => {
     const identity = room.localParticipant.identity;
@@ -244,11 +243,10 @@ function ParticipantList({
         <button
           type="button"
           onClick={toggleRaiseHand}
-          className={`mb-4 w-full rounded-lg px-3 py-2 text-sm font-medium text-white ${
-            raisedHands[room.localParticipant.identity]
+          className={`mb-4 w-full rounded-lg px-3 py-2 text-sm font-medium text-white ${raisedHands[room.localParticipant.identity]
               ? "bg-yellow-600 hover:bg-yellow-700"
               : "bg-blue-600 hover:bg-blue-700"
-          }`}
+            }`}
         >
           {raisedHands[room.localParticipant.identity]
             ? "✋ Lower Hand"
